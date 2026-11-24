@@ -26,6 +26,13 @@ APP_DIR = (os.path.dirname(os.path.abspath(sys.executable)) if FROZEN
            else os.path.dirname(os.path.abspath(__file__)))
 CLI_SCRIPT = os.path.join(APP_DIR, "skybox.py")
 CRASH_LOG = os.path.join(APP_DIR, "SkyboxRecon-error.log")
+# Read-only files bundled into the executable (icon); _MEIPASS when frozen.
+BUNDLE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from skybox import VERSION as APP_VERSION
+except Exception:  # noqa: BLE001
+    APP_VERSION = "2.0.0"
 
 DONE = object()  # worker-finished marker passed through the event queue
 
@@ -71,7 +78,12 @@ class SkyboxGUI(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self._events: queue.Queue = queue.Queue()
-        self.title(APP_TITLE)
+        self.title(f"{APP_TITLE}  v{APP_VERSION}")
+        try:
+            self._icon = tk.PhotoImage(file=os.path.join(BUNDLE_DIR, "assets", "icon.png"))
+            self.iconphoto(True, self._icon)
+        except tk.TclError:
+            pass
         self.geometry("1180x780")
         self.minsize(980, 650)
         self.configure(bg="#0b1220")
@@ -121,7 +133,7 @@ class SkyboxGUI(tk.Tk):
             ("RECEIVER", "Not connected"),
             ("CONTROL MODE", "Local / offline"),
             ("HARDWARE WRITE", "Not exposed in GUI"),
-            ("APPLICATION", "V2 desktop interface"),
+            ("APPLICATION", f"Desktop v{APP_VERSION}"),
         ]:
             card = ttk.Frame(summary, style="Panel.TFrame", padding=12)
             card.pack(side="left", fill="x", expand=True, padx=(0, 10))
@@ -135,7 +147,7 @@ class SkyboxGUI(tk.Tk):
         footer.pack(side="bottom", fill="x")
         ttk.Label(
             footer,
-            text="Skybox Recon V2 • Hardware functions require compatible receiver interfaces/drivers",
+            text=f"Skybox Recon v{APP_VERSION} • Hardware functions require compatible receiver interfaces/drivers",
             style="Sub.TLabel",
         ).pack(side="left")
         ttk.Button(footer, text="Open application folder",

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<title>Skybox Recon</title>
+<style>
+  :root {
+    --bg: #0b1220; --panel: #142238; --panel2: #101a2b; --line: #22344f;
+    --text: #e6edf7; --sub: #9fb2cc; --accent: #1677d2; --accent2: #2b8be6;
+    --ok: #3ccf91; --bad: #ff6b6b; --warn: #f5c451;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, "Roboto Mono", monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { padding: calc(env(safe-area-inset-top) + 14px) 18px 10px; background: var(--panel2);
+    border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 19px; letter-spacing: .04em; }
+  header h1 span { color: var(--accent2); }
+  header p { margin: 2px 0 0; color: var(--sub); font-size: 12px; letter-spacing: .08em; }
+  .status { margin-top: 6px; font-size: 12px; color: var(--warn); }
+  main { flex: 1; overflow-y: auto; padding: 16px 16px 24px; }
+  section { display: none; } section.active { display: block; }
+  h2 { font-size: 20px; margin: 4px 0 4px; } .lead { color: var(--sub); margin: 0 0 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+    margin-bottom: 12px; }
+  .card h3 { margin: 0 0 4px; font-size: 16px; } .card p { margin: 0 0 10px; color: var(--sub); font-size: 14px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .stat b { display: block; color: #83a9d6; font-size: 10px; letter-spacing: .1em; }
+  .stat span { font-weight: 600; font-size: 14px; }
+  button, .btn { appearance: none; border: 0; border-radius: 10px; background: var(--accent); color: #fff;
+    font: inherit; font-weight: 600; padding: 11px 16px; min-height: 44px; cursor: pointer; }
+  button:active { background: var(--accent2); } button.ghost { background: #1a2b43; color: var(--text); }
+  button:disabled { opacity: .5; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  label { display: block; font-size: 12px; color: var(--sub); margin: 10px 0 4px; letter-spacing: .03em; }
+  input, select { width: 100%; background: #0d1828; color: var(--text); border: 1px solid var(--line);
+    border-radius: 9px; padding: 10px; font: inherit; min-height: 44px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+  pre { background: #07101d; color: #d8e5f5; border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+    font: 11.5px/1.4 var(--mono); overflow-x: auto; white-space: pre; margin: 10px 0 0; min-height: 60px; }
+  .warnbox { background: #3a2b16; color: #ffd78a; border-radius: 10px; padding: 12px; font-size: 13px; margin-top: 4px; }
+  .result { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .result:last-child { border-bottom: 0; } .ok { color: var(--ok); font-weight: 700; } .bad { color: var(--bad); font-weight: 700; }
+  .summary { font-size: 15px; font-weight: 700; margin: 8px 0 0; }
+  nav { display: grid; grid-template-columns: repeat(5, 1fr); background: var(--panel2); border-top: 1px solid var(--line);
+    padding-bottom: env(safe-area-inset-bottom); }
+  nav button { background: transparent; color: var(--sub); border-radius: 0; font-size: 11px; font-weight: 600;
+    padding: 8px 2px 10px; min-height: 58px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  nav button svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+  nav button.active { color: #fff; } nav button.active svg { stroke: var(--accent2); }
+  .file { position: relative; overflow: hidden; display: inline-block; }
+  .file input { position: absolute; inset: 0; opacity: 0; min-height: 0; }
+  .muted { color: var(--sub); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>◉ SKYBOX <span>RECON</span></h1>
+  <p>ALi M3510 / M3510A RECEIVER TOOLKIT · MOBILE</p>
+  <div class="status" id="status">● OFFLINE — local analysis only</div>
+</header>
+
+<main>
+  <!-- Overview -->
+  <section id="tab-home" class="active">
+    <h2>Control centre</h2>
+    <p class="lead">Offline receiver tools that run entirely on this device. Nothing is uploaded.</p>
+    <div class="grid" style="margin-bottom:12px">
+      <div class="stat"><b>RECEIVER</b><span>Not connected</span></div>
+      <div class="stat"><b>MODE</b><span>Local / offline</span></div>
+      <div class="stat"><b>HARDWARE WRITE</b><span>Not exposed</span></div>
+      <div class="stat"><b>VERSION</b><span id="ver">2.0.0</span></div>
+    </div>
+    <div class="card"><h3>Diagnostics</h3><p>Run the offline self-test suite.</p>
+      <button data-go="diag" data-run="selftest">Run self-test</button></div>
+    <div class="card"><h3>Firmware analysis</h3><p>Inspect a firmware image read-only: entropy map, signatures, partition records.</p>
+      <button data-go="fw">Open Firmware Lab</button></div>
+    <div class="card"><h3>Satellite tuning</h3><p>Build a DVB-S/S2/S2X channel file and engine command.</p>
+      <button data-go="tune">Open tuning builder</button></div>
+    <div class="card"><h3>IPL frame tool</h3><p>Encode and verify loader frames (A5 5A · len · cmd · payload · CRC32).</p>
+      <button data-go="frame">Open frame tool</button></div>
+    <div class="warnbox">LIMITATIONS: The mobile edition does not drive serial/UART hardware, tune a frontend, blind-scan,
+      decode audio/video or flash firmware. Use the Windows or Linux edition with suitable hardware for serial probing.</div>
+  </section>
+
+  <!-- Firmware -->
+  <section id="tab-fw">
+    <h2>Firmware Lab</h2>
+    <p class="lead">Read-only analysis. The file stays on this device.</p>
+    <div class="card">
+      <div class="row">
+        <span class="file btn">Choose image…<input type="file" id="fwfile"></span>
+        <button class="ghost" id="fwcopy" disabled>Copy report</button>
+      </div>
+      <p class="muted" id="fwname" style="margin:10px 0 0">No image selected (.bin .img .rom .abs or any file).</p>
+    </div>
+    <pre id="fwout">Report appears here.</pre>
+  </section>
+
+  <!-- Tuning -->
+  <section id="tab-tune">
+    <h2>Tuning builder</h2>
+    <p class="lead">Prepares a channel file and command; tuning needs DVB hardware and drivers.</p>
+    <div class="card">
+      <div class="two">
+        <div><label>Frequency (kHz)</label><input id="t-freq" inputmode="numeric" value="11500000"></div>
+        <div><label>Symbol rate (sym/s)</label><input id="t-sr" inputmode="numeric" value="27500000"></div>
+        <div><label>Standard</label><select id="t-delsys"><option>DVBS</option><option selected>DVBS2</option><option>DVBS2X</option></select></div>
+        <div><label>Modulation</label><select id="t-mod"><option>auto</option><option>QPSK</option><option>8PSK</option><option>16APSK</option><option>32APSK</option></select></div>
+        <div><label>FEC</label><select id="t-fec"><option>auto</option><option>1/2</option><option>2/3</option><option>3/4</option><option>5/6</option><option>7/8</option><option>1/3</option><option>2/5</option><option>3/5</option><option>4/5</option><option>8/9</option><option>9/10</option><option>none</option></select></div>
+        <div><label>Polarization</label><select id="t-pol"><option>H</option><option>V</option><option>L</option><option>R</option></select></div>
+        <div><label>Roll-off (S2)</label><select id="t-rolloff"><option>auto</option><option>0.35</option><option>0.25</option><option>0.20</option><option>0.15</option></select></div>
+        <div><label>Pilot (S2)</label><select id="t-pilot"><option>auto</option><option>on</option><option>off</option></select></div>
+        <div><label>Stream ID / MIS (optional)</label><input id="t-mis" inputmode="numeric" placeholder="none"></div>
+        <div><label>PLS code (optional)</label><input id="t-pls" inputmode="numeric" placeholder="none"></div>
+        <div><label>PLS mode</label><select id="t-plsmode"><option>ROOT</option><option>GOLD</option><option>COMBO</option></select></div>
+        <div><label>Service name</label><input id="t-service" value="ch1"></div>
+      </div>
+      <div class="row" style="margin-top:14px"><button id="tbuild">Build</button><button class="ghost" id="tcopy">Copy</button></div>
+    </div>
+    <pre id="tout">Output appears here.</pre>
+  </section>
+
+  <!-- Frame -->
+  <section id="tab-frame">
+    <h2>IPL frame tool</h2>
+    <p class="lead">Encode a loader frame, or paste received bytes to verify one.</p>
+    <div class="card">
+      <label>Command</label>
+      <select id="f-cmd">
+        <option value="1">0x01 hello</option><option value="2">0x02 set_baud</option><option value="3">0x03 info</option>
+        <option value="16">0x10 erase</option><option value="17">0x11 write</option><option value="18">0x12 read</option>
+        <option value="19">0x13 verify</option><option value="32">0x20 jump</option><option value="33">0x21 reset</option>
+      </select>
+      <label>Payload (hex, optional)</label><input id="f-payload" placeholder="e.g. 00 00 00 80 00 08" autocapitalize="off">
+      <div class="row" style="margin-top:12px"><button id="fenc">Encode</button></div>
+      <label style="margin-top:16px">Received bytes (hex) to decode</label><input id="f-raw" placeholder="a5 5a ..." autocapitalize="off">
+      <div class="row" style="margin-top:12px"><button class="ghost" id="fdec">Decode / verify CRC</button></div>
+    </div>
+    <pre id="fout">Output appears here.</pre>
+  </section>
+
+  <!-- Diagnostics -->
+  <section id="tab-diag">
+    <h2>Diagnostics</h2>
+    <p class="lead">Offline checks of the checksum, framing and carving engine.</p>
+    <div class="row" style="margin-bottom:12px"><button id="runst">Run self-test</button></div>
+    <div class="card" id="stres"><p style="margin:0">Not run yet.</p></div>
+    <p class="muted">Skybox Recon mobile <span id="ver2"></span> · engine port of skybox.py.
+      Never connect RS-232 voltage directly to TTL pins; never flash a receiver with unverified firmware.</p>
+  </section>
+</main>
+
+<nav id="nav">
+  <button data-tab="home" class="active"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</button>
+  <button data-tab="fw"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg>Firmware</button>
+  <button data-tab="tune"><svg viewBox="0 0 24 24"><path d="M4 19a10 10 0 0 1 10-10M4 19a6 6 0 0 1 6-6"/><circle cx="4" cy="19" r="1.5"/><path d="M14 4l6 6-4 1-3-3z"/></svg>Tuning</button>
+  <button data-tab="frame"><svg viewBox="0 0 24 24"><path d="M8 6l-6 6 6 6M16 6l6 6-6 6"/></svg>Frames</button>
+  <button data-tab="diag"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Diagnostics</button>
+</nav>
+
+<script src="engine.js"></script>
+<script>
+(() => {
+  "use strict";
+  const E = window.SkyboxEngine;
+  const $ = (id) => document.getElementById(id);
+  $("ver").textContent = E.VERSION; $("ver2").textContent = "v" + E.VERSION;
+
+  function show(tab) {
+    document.querySelectorAll("section").forEach((s) => s.classList.toggle("active", s.id === "tab-" + tab));
+    document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    document.querySelector("main").scrollTop = 0;
+  }
+  document.querySelectorAll("#nav button").forEach((b) => b.addEventListener("click", () => show(b.dataset.tab)));
+  document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => {
+    show(b.dataset.go); if (b.dataset.run === "selftest") runSelfTest();
+  }));
+
+  const status = (t) => { $("status").textContent = t; };
+  const idle = () => status("● OFFLINE — local analysis only");
+
+  async function copy(text, btn) {
+    try { await navigator.clipboard.writeText(text); }
+    catch (_) {
+      const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta);
+      ta.select(); document.execCommand("copy"); ta.remove();
+    }
+    const old = btn.textContent; btn.textContent = "Copied"; setTimeout(() => (btn.textContent = old), 1200);
+  }
+
+  // Diagnostics
+  function runSelfTest() {
+    const res = E.selfTest();
+    const fails = res.filter((r) => !r.ok).length;
+    $("stres").innerHTML = res.map((r) =>
+      `<div class="result"><span>${r.name}</span><span class="${r.ok ? "ok" : "bad"}">${r.ok ? "OK" : "FAIL"}</span></div>`
+    ).join("") + `<p class="summary ${fails ? "bad" : "ok"}">${fails} failure(s)</p>`;
+  }
+  $("runst").addEventListener("click", runSelfTest);
+
+  // Firmware
+  let report = "";
+  $("fwfile").addEventListener("change", async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    $("fwname").textContent = `${f.name} · ${f.size.toLocaleString()} bytes`;
+    $("fwout").textContent = "Analysing…"; status("● WORKING — analysing image");
+    $("fwcopy").disabled = true;
+    await new Promise((r) => setTimeout(r, 30));
+    try {
+      const data = new Uint8Array(await f.arrayBuffer());
+      let sha = "";
+      if (window.crypto && crypto.subtle) {
+        const h = new Uint8Array(await crypto.subtle.digest("SHA-1", data));
+        sha = "  sha1=" + Array.from(h, (x) => x.toString(16).padStart(2, "0")).join("");
+      }
+      const r = E.analyzeFirmware(data, f.name);
+      report = r.text.replace(/\n/, sha + "\n");
+      $("fwout").textContent = report; $("fwcopy").disabled = false;
+    } catch (e) {
+      $("fwout").textContent = "ERROR: " + (e && e.message ? e.message : e);
+    }
+    idle();
+  });
+  $("fwcopy").addEventListener("click", (e) => copy(report, e.target));
+
+  // Tuning
+  function tuneOpts() {
+    const o = {};
+    for (const k of ["freq", "sr", "delsys", "mod", "fec", "pol", "rolloff", "pilot", "mis", "pls", "service"])
+      o[k] = $("t-" + k).value.trim();
+    o.plsMode = $("t-plsmode").value;
+    return o;
+  }
+  function buildTune() {
+    const o = tuneOpts();
+    for (const [k, label] of [["freq", "Frequency"], ["sr", "Symbol rate"]])
+      if (!/^\d+$/.test(o[k])) return ($("tout").textContent = `${label} must be a whole number.`);
+    for (const [k, label] of [["mis", "Stream ID"], ["pls", "PLS code"]])
+      if (o[k] && !/^\d+$/.test(o[k])) return ($("tout").textContent = `${label} must be a whole number or empty.`);
+    if (!/^[\w.-]+$/.test(o.service)) return ($("tout").textContent = "Service name: letters, digits, . _ - only.");
+    $("tout").textContent = `# ${o.service}.conf (dvbv5 channel file)\n${E.tuneConf(o)}\n# engine command\n${E.tuneCommand(o)}`;
+  }
+  $("tbuild").addEventListener("click", buildTune);
+  $("tcopy").addEventListener("click", (e) => copy($("tout").textContent, e.target));
+
+  // Frames
+  $("fenc").addEventListener("click", () => {
+    try {
+      const cmd = +$("f-cmd").value;
+      const payload = $("f-payload").value.trim() ? E.parseHex($("f-payload").value) : new Uint8Array(0);
+      if (payload.length > 0xfffe) throw new Error("payload too long");
+      const fr = E.encodeFrame(cmd, payload);
+      $("fout").textContent = `frame (${fr.length} bytes):\n` +
+        Array.from(fr, (x) => x.toString(16).padStart(2, "0")).join(" ") + "\n\n" + E.hexdump(fr);
+    } catch (e) { $("fout").textContent = "ERROR: " + e.message; }
+  });
+  $("fdec").addEventListener("click", () => {
+    try {
+      const f = E.decodeFrame(E.parseHex($("f-raw").value));
+      $("fout").textContent = f
+        ? `valid frame\ncmd = 0x${f.cmd.toString(16).padStart(2, "0")}${f.cmd & 0x80 ? " (ack)" : ""}\n` +
+          `payload (${f.payload.length} bytes):\n${E.hexdump(f.payload) || "(empty)"}`
+        : "No valid frame: sync, length or CRC32 does not match.";
+    } catch (e) { $("fout").textContent = "ERROR: " + e.message; }
+  });
+})();
+</script>
+</body>
+</html>

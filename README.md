@@ -4,15 +4,26 @@ This package adds a native Tkinter desktop shell around the supplied `skybox.py`
 command-line engine. Launching `SkyboxRecon.exe` opens a persistent graphical
 control centre rather than printing CLI usage and exiting.
 
-## Build on GitHub Actions
-Push this folder's contents to the `main` branch of `BajanBob/skybox`.
-The workflow `.github/workflows/build-windows.yml` builds, tests and uploads
-the `SkyboxRecon-Windows-x64` ZIP artifact containing:
+## Downloads (v2.0.0)
+GitHub Actions (`.github/workflows/build.yml`) builds and tests every platform
+on each push and pull request. Pushing a tag such as `v2.0.0` also publishes a
+GitHub Release with all files attached.
 
-- `SkyboxRecon.exe` — the desktop window (built from `skybox_gui.py`,
-  windowed, with the `skybox.py` engine bundled inside; run
-  `SkyboxRecon.exe --cli <command>` to use the engine directly).
-- `skybox-cli.exe` — the console engine (built from `skybox.py`).
+| Platform | File | Notes |
+|---|---|---|
+| Windows x64 installer | `SkyboxRecon-2.0.0-Windows-x64-Setup.exe` | Desktop + Start-menu shortcuts, uninstaller; no admin needed |
+| Windows x64 portable | `SkyboxRecon-2.0.0-Windows-x64-Portable.zip` | `SkyboxRecon.exe` (GUI) + `skybox-cli.exe` |
+| Linux x86_64 | `SkyboxRecon-2.0.0-Linux-x86_64.zip` | GUI + CLI, `install.sh` adds menu/desktop launcher |
+| Android | `SkyboxRecon-2.0.0-Android.apk` | Mobile edition: offline self-test, firmware analysis, tuning and frame tools |
+
+The desktop `SkyboxRecon` executable bundles the `skybox.py` engine; run
+`SkyboxRecon --cli <command>` to use it directly. The Android edition
+(`mobile/`) is a Capacitor app with a JavaScript port of the offline engine
+functions; it does not drive serial hardware.
+
+To sign Android release builds with a stable key, add the repository secrets
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and
+`ANDROID_KEY_PASSWORD`; otherwise CI produces a debug-signed APK.
 
 Do not commit `dist/`, `build/` or `.spec` files; CI produces them.
 

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Skybox Recon
+Comment=ALi M3510 / M3510A satellite receiver toolkit
+Exec=SkyboxRecon
+Icon=skybox-recon
+Terminal=false
+Categories=Utility;Development;Electronics;
+Keywords=satellite;receiver;firmware;DVB;UART;
