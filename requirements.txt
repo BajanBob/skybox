@@ -1,1 +1,2 @@
+# GUI uses Python standard library only; pyserial is optional for UART hardware commands.
 pyserial>=3.5
