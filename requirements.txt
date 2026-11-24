@@ -1,2 +1,3 @@
-# GUI uses Python standard library only; pyserial is optional for UART hardware commands.
-pyserial>=3.5
+# Desktop GUI uses Tkinter (bundled with Python on Windows/macOS; python3-tk on Linux).
+pyserial>=3.5     # UART probe, IPL loader, YMODEM
+numpy>=1.26       # constellation / MER

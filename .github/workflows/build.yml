@@ -37,11 +37,11 @@ jobs:
         run: >
           python -m PyInstaller --noconfirm --clean --onefile --windowed --name SkyboxRecon
           --icon assets/icon.ico --add-data "assets/icon.png:assets"
-          --hidden-import skybox --hidden-import serial.tools.list_ports skybox_gui.py
+          --hidden-import skybox --hidden-import serial.tools.list_ports --collect-submodules skybox_recon skybox_gui.py
       - name: Build skybox-cli.exe (command-line engine)
         run: >
           python -m PyInstaller --noconfirm --onefile --console --name skybox-cli
-          --icon assets/icon.ico --hidden-import serial skybox.py
+          --icon assets/icon.ico --hidden-import serial --collect-submodules skybox_recon skybox.py
       - name: Test skybox-cli.exe
         shell: pwsh
         run: |
@@ -123,8 +123,8 @@ jobs:
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --windowed --name SkyboxRecon \
             --add-data "assets/icon.png:assets" \
-            --hidden-import skybox --hidden-import serial.tools.list_ports skybox_gui.py
-          python -m PyInstaller --noconfirm --onefile --console --name skybox-cli --hidden-import serial skybox.py
+            --hidden-import skybox --hidden-import serial.tools.list_ports --collect-submodules skybox_recon skybox_gui.py
+          python -m PyInstaller --noconfirm --onefile --console --name skybox-cli --hidden-import serial --collect-submodules skybox_recon skybox.py
       - name: Test binaries
         run: |
           ./dist/skybox-cli selftest

@@ -30,9 +30,9 @@ CRASH_LOG = os.path.join(APP_DIR, "SkyboxRecon-error.log")
 BUNDLE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from skybox import VERSION as APP_VERSION
+    from skybox import CODENAME, VERSION as APP_VERSION
 except Exception:  # noqa: BLE001
-    APP_VERSION = "2.0.0"
+    APP_VERSION, CODENAME = "6.0.0", "Beryl"
 
 DONE = object()  # worker-finished marker passed through the event queue
 
@@ -78,14 +78,16 @@ class SkyboxGUI(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self._events: queue.Queue = queue.Queue()
-        self.title(f"{APP_TITLE}  v{APP_VERSION}")
+        self._calls: queue.Queue = queue.Queue()
+        self.last_report = None
+        self.title(f"{APP_TITLE}  v{APP_VERSION} {CODENAME}")
         try:
             self._icon = tk.PhotoImage(file=os.path.join(BUNDLE_DIR, "assets", "icon.png"))
             self.iconphoto(True, self._icon)
         except tk.TclError:
             pass
-        self.geometry("1180x780")
-        self.minsize(980, 650)
+        self.geometry("1320x860")
+        self.minsize(1100, 720)
         self.configure(bg="#0b1220")
         self.report_callback_exception = self._callback_error
         self._style()
@@ -106,6 +108,10 @@ class SkyboxGUI(tk.Tk):
         style.configure("TFrame", background="#101a2b")
         style.configure("Panel.TFrame", background="#142238")
         style.configure("TLabel", background="#101a2b", foreground="#e6edf7")
+        style.configure("TCheckbutton", background="#101a2b", foreground="#e6edf7")
+        style.configure("Treeview", background="#0d1828", fieldbackground="#0d1828", foreground="#e6edf7",
+                        rowheight=24)
+        style.configure("Treeview.Heading", background="#1a2b43", foreground="#dce8f8")
         style.configure("Title.TLabel", font=("Segoe UI", 21, "bold"), foreground="#f4f8ff")
         style.configure("Sub.TLabel", foreground="#9fb2cc")
         style.configure("Status.TLabel", foreground="#f5c451")
@@ -113,7 +119,7 @@ class SkyboxGUI(tk.Tk):
         style.configure("Accent.TButton", background="#1677d2", foreground="white")
         style.map("Accent.TButton", background=[("active", "#2b8be6")])
         style.configure("TNotebook", background="#0b1220", borderwidth=0)
-        style.configure("TNotebook.Tab", padding=(16, 9), background="#1a2b43", foreground="#dce8f8")
+        style.configure("TNotebook.Tab", padding=(10, 7), background="#1a2b43", foreground="#dce8f8")
         style.map("TNotebook.Tab", background=[("selected", "#1677d2")],
                   foreground=[("selected", "white")])
 
@@ -133,6 +139,7 @@ class SkyboxGUI(tk.Tk):
             ("RECEIVER", "Not connected"),
             ("CONTROL MODE", "Local / offline"),
             ("HARDWARE WRITE", "Not exposed in GUI"),
+            ("RELEASE", f"{CODENAME}"),
             ("APPLICATION", f"Desktop v{APP_VERSION}"),
         ]:
             card = ttk.Frame(summary, style="Panel.TFrame", padding=12)
@@ -156,14 +163,24 @@ class SkyboxGUI(tk.Tk):
         self.tabs = ttk.Notebook(self)
         self.tabs.pack(fill="both", expand=True, padx=20, pady=(0, 12))
         self.dashboard = ttk.Frame(self.tabs, padding=18)
-        self.tabs.add(self.dashboard, text="Overview")
-        self._overview()
+        from skybox_recon import gui_panels as gp
+        self.spectrum = gp.SpectrumPanel(self, self.tabs)
+        self.blindscan = gp.BlindScanPanel(self, self.tabs, self.spectrum)
+        self.constellation = gp.ConstellationPanel(self, self.tabs)
+        self.services = gp.ServicesPanel(self, self.tabs)
+        self.tuning = gp.TuningPanel(self, self.tabs)
+        self.tune_tab = self.tuning.frame
+        self.dual = gp.DualTunerPanel(self, self.tabs)
+        self.stream = gp.StreamPanel(self, self.tabs)
+        self.advisor = gp.AdvisorPanel(self, self.tabs, self.spectrum, self.blindscan, self.services, self.tuning)
         self.fw_tab = self._firmware_tab()
         self.serial_tab = self._serial_tab()
-        self.tune_tab = self._tuning_tab()
         self.diag_tab = self._diagnostics_tab()
+        self._overview()
 
     def _overview(self) -> None:
+        self.tabs.insert(0, self.dashboard, text="Overview")
+        self.tabs.select(self.dashboard)
         ttk.Label(self.dashboard, text="Receiver control centre",
                   style="Title.TLabel").pack(anchor="w")
         ttk.Label(
@@ -173,31 +190,35 @@ class SkyboxGUI(tk.Tk):
         ).pack(anchor="w", pady=(4, 18))
         grid = ttk.Frame(self.dashboard)
         grid.pack(fill="x")
+        go = self.tabs.select
         items = [
-            ("Diagnostics", "Run the offline self-test suite.",
-             lambda: self.run_cli(["selftest"], "Self-test")),
-            ("Firmware analysis", "Inspect a firmware image (read-only).",
-             self.choose_firmware),
-            ("Serial console", "Probe a selected COM / serial port.",
-             lambda: self.tabs.select(self.serial_tab)),
-            ("Satellite tuning", "Prepare a DVB tuning command.",
-             lambda: self.tabs.select(self.tune_tab)),
+            ("Spectrum & finder", "Live L-band spectrum, waterfall and finder beep (RTL-SDR / HackRF).",
+             lambda: go(self.spectrum.frame)),
+            ("Blind scan", "Detect transponders and estimate symbol rates.", lambda: go(self.blindscan.frame)),
+            ("Services / PIDs", "Services, PIDs, codecs and satellite position from a TS.",
+             lambda: go(self.services.frame)),
+            ("Constellation", "Constellation and MER from an IQ capture.", lambda: go(self.constellation.frame)),
+            ("Auto-acquire", "Sweep, detect, tune, identify: the cognitive receiver.", lambda: go(self.advisor.frame)),
+            ("Dual tuner", "Two DVB adapters, independent tasks.", lambda: go(self.dual.frame)),
+            ("AV stream", "Stream to players on the local network.", lambda: go(self.stream.frame)),
+            ("Diagnostics", "Run the offline self-test suite.", lambda: self.run_cli(["selftest"], "Self-test")),
         ]
         for i, (title, desc, action) in enumerate(items):
             panel = ttk.Frame(grid, style="Panel.TFrame", padding=16)
-            panel.grid(row=i // 2, column=i % 2, sticky="nsew", padx=6, pady=6)
-            grid.columnconfigure(i % 2, weight=1)
+            panel.grid(row=i // 4, column=i % 4, sticky="nsew", padx=6, pady=6)
+            grid.columnconfigure(i % 4, weight=1)
             tk.Label(panel, text=title, bg="#142238", fg="#f4f8ff",
                      font=("Segoe UI", 14, "bold")).pack(anchor="w")
             tk.Label(panel, text=desc, bg="#142238", fg="#9fb2cc",
-                     wraplength=390, justify="left").pack(anchor="w", pady=8)
+                     wraplength=250, justify="left").pack(anchor="w", pady=8)
             ttk.Button(panel, text="Open", command=action,
                        style="Accent.TButton").pack(anchor="w")
         tk.Label(
             self.dashboard,
-            text=("LIMITATIONS: This GUI does not yet implement live blind scan, "
-                  "spectrum acquisition, PID parsing/decoding, independent dual-tuner "
-                  "drivers, or Wi-Fi AV transmission."),
+            text=("HARDWARE: live spectrum, finder and constellation need an RTL-SDR or HackRF on the dish "
+                  "cable with LNB power (13/18 V inserter). Tuning, auto-acquire recording and the dual tuner need "
+                  "Linux DVB-S2 adapters with dvbv5-zap. Services/PIDs, streaming, firmware and self-test work on "
+                  "any computer. Every simulated source is labelled."),
             bg="#3a2b16", fg="#ffd78a", wraplength=1000,
             justify="left", padx=12, pady=12,
         ).pack(fill="x", pady=(18, 0))
@@ -245,43 +266,6 @@ class SkyboxGUI(tk.Tk):
         self.refresh_ports(quiet=True)
         return tab
 
-    def _tuning_tab(self) -> ttk.Frame:
-        tab = ttk.Frame(self.tabs, padding=18)
-        self.tabs.add(tab, text="Satellite Tuning")
-        ttk.Label(tab, text="DVB tuning command builder", style="Title.TLabel").pack(anchor="w")
-        form = ttk.Frame(tab)
-        form.pack(anchor="w", pady=12)
-        self.freq = tk.StringVar(value="11500000")
-        self.sr = tk.StringVar(value="27500000")
-        self.mod = tk.StringVar(value="auto")
-        self.delsys = tk.StringVar(value="DVBS2")
-        self.pol = tk.StringVar(value="H")
-        for row, (label, var) in enumerate([
-            ("Frequency (kHz)", self.freq), ("Symbol rate (sym/s)", self.sr)
-        ]):
-            ttk.Label(form, text=label).grid(row=row, column=0, sticky="w", padx=6, pady=6)
-            ttk.Entry(form, textvariable=var, width=22).grid(row=row, column=1,
-                                                             sticky="w", padx=6, pady=6)
-        ttk.Label(form, text="Standard").grid(row=0, column=2, padx=6)
-        ttk.Combobox(form, textvariable=self.delsys, values=["DVBS", "DVBS2", "DVBS2X"],
-                     state="readonly", width=10).grid(row=0, column=3)
-        ttk.Label(form, text="Modulation").grid(row=1, column=2, padx=6)
-        ttk.Combobox(form, textvariable=self.mod,
-                     values=["auto", "QPSK", "8PSK", "16APSK", "32APSK"],
-                     state="readonly", width=10).grid(row=1, column=3)
-        ttk.Label(form, text="Polarization").grid(row=2, column=0, sticky="w", padx=6, pady=6)
-        ttk.Combobox(form, textvariable=self.pol, values=["H", "V", "L", "R"],
-                     state="readonly", width=8).grid(row=2, column=1, sticky="w", padx=6, pady=6)
-        ttk.Button(tab, text="Show tuning command", command=self.show_tune,
-                   style="Accent.TButton").pack(anchor="w", pady=8)
-        ttk.Label(
-            tab,
-            text=("This panel prepares a command only; compatible DVB frontend hardware, "
-                  "drivers and dvbv5-zap (Linux DVB tools) are required for actual tuning."),
-            style="Sub.TLabel", wraplength=950,
-        ).pack(anchor="w", pady=8)
-        return tab
-
     def _diagnostics_tab(self) -> ttk.Frame:
         tab = ttk.Frame(self.tabs, padding=12)
         self.tabs.add(tab, text="Diagnostics / Log")
@@ -319,7 +303,20 @@ class SkyboxGUI(tk.Tk):
         self.output.delete("1.0", "end")
         self.output.configure(state="disabled")
 
+    def call_ui(self, fn, *args) -> None:
+        """Run fn(*args) on the Tk thread (safe to call from worker threads)."""
+        self._calls.put((fn, args))
+
     def _drain_events(self) -> None:
+        try:
+            while True:
+                fn, args = self._calls.get_nowait()
+                try:
+                    fn(*args)
+                except Exception:  # noqa: BLE001
+                    self.log("ERROR:\n" + traceback.format_exc())
+        except queue.Empty:
+            pass
         """Move messages from worker threads onto the Tk thread (Tk is not thread-safe)."""
         try:
             while True:
@@ -401,20 +398,6 @@ class SkyboxGUI(tk.Tk):
             messagebox.showwarning("Select port", "Enter or choose a serial port first.")
             return
         self.run_cli(["uart", port, "--parity", self.parity.get()], "UART probe")
-
-    def show_tune(self) -> None:
-        try:
-            int(self.freq.get())
-            int(self.sr.get())
-        except ValueError:
-            messagebox.showerror("Invalid values", "Frequency and symbol rate must be whole numbers.")
-            return
-        args = ["tune", "--freq", self.freq.get(), "--sr", self.sr.get(),
-                "--delsys", self.delsys.get(), "--mod", self.mod.get(),
-                "--pol", self.pol.get()]
-        self.tabs.select(self.diag_tab)
-        self.log("Prepared tuning command (not executed):\n"
-                 + subprocess.list2cmdline(cli_command(args)))
 
     @staticmethod
     def open_path(path: str) -> None:

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 <your name>
 """
-skybox-recon -- single-file build.
+skybox-recon -- command-line engine (Beryl).
 
 Reverse-engineering and reflash toolkit for ALi M3510/M3510A based satellite
 receivers (Skybox F3/F4/F5/F5S/M3/V6).
@@ -17,6 +17,11 @@ Sole external dependency is pyserial, and only the hardware commands need it.
   ymodem     YMODEM-1K sender, for U-Boot loady fallback
   usb        build a USB stick upgrade image
   tune       DVB-S/S2/S2X tuning via dvbv5-zap
+  scan       spectral blind scan (rtl_power / hackrf_sweep) + advisor
+  finder     satellite finder with audible beep
+  pids       services, PIDs, codecs and satellite position from a .ts
+  constel    constellation and MER from an IQ capture
+  stream     serve a .ts to players on the local network
   lowsdr     SDR + leandvb for symbol rates the demod cannot reach
   remux      TS demux and decode pipelines
 
@@ -42,7 +47,8 @@ import time
 from collections import Counter
 from dataclasses import dataclass
 
-VERSION = "2.0.0"
+VERSION = "6.0.0"
+CODENAME = "Beryl"
 
 # --------------------------------------------------------------------------- #
 # common
@@ -449,42 +455,143 @@ def cmd_usb(a):
 # dvb: tuning
 # --------------------------------------------------------------------------- #
 
-FE = {"fec": ["auto", "1/2", "2/3", "3/4", "5/6", "7/8", "1/3", "2/5", "3/5", "4/5",
-              "8/9", "9/10", "none"],
-      "mod": ["QPSK", "8PSK", "16APSK", "32APSK", "auto"],
-      "rolloff": ["0.35", "0.25", "0.20", "0.15", "auto"],
-      "pilot": ["on", "off", "auto"],
-      "pls_mode": ["ROOT", "GOLD", "COMBO"]}
+def _tune_params(a):
+    from skybox_recon.dvb import TuneParams
+    return TuneParams(freq_khz=a.freq, sr=a.sr, delsys=a.delsys, mod=a.mod, fec=a.fec, pol=a.pol,
+                      rolloff=a.rolloff, pilot=a.pilot, inversion=a.inversion, isi=a.mis,
+                      pls_code=a.pls, pls_mode=a.pls_mode, sat_number=a.diseqc, service=a.service)
 
 
 def tune_conf(a) -> str:
-    lines = [f"[{a.service}]",
-             f"\tDELIVERY_SYSTEM = {a.delsys}",
-             f"\tFREQUENCY = {a.freq}",
-             f"\tSYMBOL_RATE = {a.sr}",
-             f"\tINNER_FEC = {a.fec}",
-             f"\tMODULATION = {a.mod}",
-             f"\tPOLARIZATION = {a.pol}"]
-    if a.delsys.startswith("DVBS2"):
-        lines += [f"\tROLLOFF = {a.rolloff}", f"\tPILOT = {a.pilot}"]
-    if a.mis is not None:
-        lines.append(f"\tSTREAM_ID = {a.mis}")
-    if a.pls is not None:
-        lines += [f"\tPLS_CODE = {a.pls}", f"\tPLS_MODE = {a.pls_mode}"]
-    if a.diseqc is not None:
-        lines.append(f"\tDISECQ = {a.diseqc}")
-    return "\n".join(lines) + "\n"
+    from skybox_recon.dvb import dvbv5_conf
+    return dvbv5_conf(_tune_params(a))
 
 
 def cmd_tune(a):
+    from skybox_recon.dvb import dvbv5_zap_cmd
+    try:
+        conf = tune_conf(a)
+    except ValueError as e:
+        raise RuntimeError(str(e))
     path = os.path.join(tempfile.gettempdir(), f"{a.service}.conf")
     with open(path, "w") as f:
-        f.write(tune_conf(a))
-    cmd = ["dvbv5-zap", "-a", str(a.adapter), "-f", str(a.frontend),
-           "-c", path, "-o", a.out, "-t", "600", a.service]
+        f.write(conf)
+    cmd = dvbv5_zap_cmd(path, _tune_params(a), adapter=a.adapter, frontend=a.frontend, lnb=a.lnb, out=a.out)
+    print(conf)
     print(" ".join(cmd))
     print("---", flush=True)
+    if a.print_only:
+        return 0
     os.execvp(cmd[0], cmd)
+
+
+# --------------------------------------------------------------------------- #
+# beryl: spectrum, blind scan, finder, PIDs, constellation, streaming
+# --------------------------------------------------------------------------- #
+
+def _sweeps(a):
+    from skybox_recon import spectrum
+    if a.csv:
+        with open(a.csv, encoding="utf-8", errors="replace") as f:
+            sweeps = spectrum.read_sweeps_csv(f.read())
+    elif a.simulate:
+        from skybox_recon.testsignals import demo_sweep
+        print("SIMULATED test signal (not real reception)")
+        sweeps = [demo_sweep(seed=1)]
+    else:
+        cmd = spectrum.sweep_command(a.tool, bin_khz=a.bin, gain=a.gain, once=True)
+        print(" ".join(cmd), file=sys.stderr)
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        sweeps = spectrum.read_sweeps_csv(out.stdout)
+        if not sweeps:
+            raise RuntimeError(f"{a.tool} produced no data: {out.stderr.strip()[-300:]}")
+    return sweeps
+
+
+def cmd_scan(a):
+    from skybox_recon import spectrum
+    from skybox_recon.advisor import CognitiveAdvisor, identify_satellite, load_reference
+    freqs, levels = _sweeps(a)[-1]
+    found = spectrum.detect_transponders(freqs, levels, lof_mhz=a.lof, pol=a.pol, threshold_db=a.threshold)
+    floor = spectrum.noise_floor(levels)
+    print(f"sweep {freqs[0]:.0f}-{freqs[-1]:.0f} MHz IF, {len(freqs)} bins, noise floor {floor:.1f} dB")
+    print(f"carriers: {len(found)} (LOF {a.lof:g} MHz, pol {a.pol}; symbol rates estimated from -3 dB width)")
+    for t in found:
+        print("  " + t.label())
+    matches = identify_satellite(found, load_reference(a.reference)) if a.reference else None
+    adv = CognitiveAdvisor()
+    adv.record(found, a.lof, a.pol, floor)
+    print("\nadvisor:")
+    for tip in adv.advise(found, floor, a.lof, a.pol, reference_matches=matches):
+        print("  " + str(tip))
+    return 0
+
+
+def cmd_finder(a):
+    from skybox_recon import spectrum
+    finder = spectrum.SatFinder(window=(a.window[0], a.window[1]) if a.window else None)
+    if a.simulate:
+        from skybox_recon.testsignals import demo_sweep
+        print("SIMULATED test signal: level ramps up as if peaking the dish")
+        for step in range(12):
+            r = finder.update(*demo_sweep(gain=step / 11, seed=step))
+            print(f"  C/N {r.cn_db:5.1f} dB  peak {r.peak_cn_db:5.1f}  tone {r.tone_hz} Hz"
+                  f"{'  LOCK' if r.locked else ''}")
+            if not a.silent:
+                spectrum.play_tone(r.tone_hz, 400 if r.locked else 120)
+        return 0
+    cmd = spectrum.sweep_command(a.tool, a.window[0] if a.window else 950, a.window[1] if a.window else 2150,
+                                 bin_khz=a.bin, gain=a.gain)
+    print(" ".join(cmd) + "   (Ctrl-C to stop)")
+
+    def on_sweep(f, l):
+        r = finder.update(f, l)
+        bar = "#" * int(r.quality * 40)
+        print(f"\r  C/N {r.cn_db:5.1f} dB  peak {r.peak_cn_db:5.1f}  |{bar:<40}|{' LOCK' if r.locked else '     '}",
+              end="", flush=True)
+        if not a.silent:
+            spectrum.play_tone(r.tone_hz, 400 if r.locked else 120)
+
+    live = spectrum.LiveSweep(cmd, on_sweep, lambda m: print("\n" + m))
+    live.start()
+    try:
+        while live.proc and live.proc.poll() is None:
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        live.stop()
+    return 0
+
+
+def cmd_pids(a):
+    from skybox_recon.ts_parser import analyze_file
+    report = analyze_file(a.input, max_bytes=a.max_mb * 1024 * 1024)
+    print(report.to_text())
+    return 0 if report.packets else 1
+
+
+def cmd_constel(a):
+    from skybox_recon.constellation import load_iq, recover
+    iq = load_iq(a.input, a.format)
+    order = {"BPSK": 2, "QPSK": 4, "8PSK": 8}[a.mod]
+    r = recover(iq, a.rate, a.sr, order=order, rolloff=a.rolloff)
+    print(f"{a.mod}: {r.symbols.size} symbols  MER {r.mer_db:.1f} dB  EVM {r.evm_pct:.1f}%  "
+          f"carrier offset {r.freq_offset_hz:+.0f} Hz")
+    return 0
+
+
+def cmd_stream(a):
+    from skybox_recon.streamer import TSStreamServer
+    srv = TSStreamServer(a.input, port=a.port, follow=a.follow, loop=not a.follow)
+    srv.start()
+    print("streaming on the local network (no internet used). Open in VLC/Kodi/mpv:")
+    for u in srv.urls():
+        print("  " + u)
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        srv.stop()
+    return 0
 
 
 # --------------------------------------------------------------------------- #
@@ -575,6 +682,33 @@ def cmd_selftest(a):
         check("carver finds squashfs", any(n.startswith("squashfs") for n in os.listdir(out)))
         check("carver finds uImage", any(n.startswith("uImage") for n in os.listdir(out)))
 
+    # Beryl engines
+    from skybox_recon import dvb, spectrum
+    from skybox_recon.testsignals import DEMO_TRANSPONDERS, demo_sweep, demo_transport_stream
+    from skybox_recon.ts_parser import TSParser
+    p = TSParser()
+    p.feed(demo_transport_stream())
+    rep = p.report()
+    check("TS parser: services and PIDs", len(rep.services) == 2 and
+          {c.pid for s in rep.services for c in s.components} >= {0x200, 0x201, 0x300})
+    check("TS parser: satellite position from NIT", rep.orbital_positions == ["28.2°E"])
+    found = spectrum.detect_transponders(*demo_sweep(seed=5))
+    check("blind scan finds all carriers", len(found) == len(DEMO_TRANSPONDERS))
+    check("blind scan symbol-rate estimate",
+          all(abs(t.sr_ksym / 1000 - sr) <= 1.6 for t, (_, sr, _) in zip(found, DEMO_TRANSPONDERS)))
+    check("LNB arithmetic", dvb.if_to_rf(1028, 9750) == 10778 and dvb.if_to_rf(1000, 5150) == 4150)
+    check("dvbv5 modulation names", "MODULATION = PSK/8" in dvb.dvbv5_conf(
+        dvb.TuneParams(freq_khz=11778000, sr=27500000, mod="8PSK")))
+    check("finder tone rises with signal", spectrum.SatFinder().update(*demo_sweep(gain=1.0)).tone_hz
+          > spectrum.SatFinder().update(*demo_sweep(gain=0.2)).tone_hz)
+    try:
+        from skybox_recon.constellation import recover
+        from skybox_recon.testsignals import demo_iq
+        r = recover(demo_iq(snr_db=20), 4e6, 1e6)
+        check("constellation QPSK MER", r.mer_db > 20)
+    except ImportError:
+        print("  skip  constellation (numpy not installed)")
+
     print(f"\n{fails} failure(s)")
     return 1 if fails else 0
 
@@ -639,24 +773,69 @@ def build_parser():
     b.add_argument("--include-bootloader", action="store_true")
     b.set_defaults(fn=cmd_usb)
 
-    t = sub.add_parser("tune", help="DVB-S/S2/S2X tuning")
+    from skybox_recon import dvb as _dvb
+    t = sub.add_parser("tune", help="DVB-S/S2/S2X tuning via dvbv5-zap")
     t.add_argument("--adapter", type=int, default=0)
     t.add_argument("--frontend", type=int, default=0)
-    t.add_argument("--delsys", default="DVBS2", choices=["DVBS", "DVBS2", "DVBS2X"])
-    t.add_argument("--freq", type=int, required=True, help="kHz")
+    t.add_argument("--delsys", default="DVBS2", choices=list(_dvb.MODULATIONS))
+    t.add_argument("--freq", type=int, required=True, help="RF frequency, kHz")
     t.add_argument("--sr", type=int, required=True, help="symbols/s")
-    t.add_argument("--fec", default="auto", choices=FE["fec"])
-    t.add_argument("--mod", default="auto", choices=FE["mod"])
-    t.add_argument("--rolloff", default="auto", choices=FE["rolloff"])
-    t.add_argument("--pilot", default="auto", choices=FE["pilot"])
+    t.add_argument("--fec", default="auto", choices=_dvb.FEC)
+    t.add_argument("--mod", default="auto", choices=_dvb.ALL_MODULATIONS)
+    t.add_argument("--rolloff", default="auto", choices=_dvb.ROLLOFF)
+    t.add_argument("--pilot", default="auto", choices=_dvb.PILOT)
+    t.add_argument("--inversion", default="auto", choices=_dvb.INVERSION)
     t.add_argument("--pol", default="H", choices=["H", "V", "L", "R"])
-    t.add_argument("--mis", type=int)
-    t.add_argument("--pls", type=int)
-    t.add_argument("--pls-mode", default="ROOT", choices=FE["pls_mode"])
-    t.add_argument("--diseqc", type=int)
+    t.add_argument("--mis", type=int, help="input stream ID (multistream)")
+    t.add_argument("--pls", type=int, help="PLS code")
+    t.add_argument("--pls-mode", default="ROOT", choices=_dvb.PLS_MODES)
+    t.add_argument("--diseqc", type=int, choices=range(4), help="DiSEqC port 0-3")
+    t.add_argument("--lnb", default="UNIVERSAL", choices=list(_dvb.LNBS))
     t.add_argument("--service", default="ch1")
     t.add_argument("--out", default="pipe:1")
+    t.add_argument("--print-only", action="store_true", help="show the channel file and command only")
     t.set_defaults(fn=cmd_tune)
+
+    def sweep_args(p):
+        p.add_argument("--tool", default="rtl_power", choices=["rtl_power", "hackrf_sweep"])
+        p.add_argument("--csv", help="read a saved rtl_power/hackrf_sweep CSV instead of live capture")
+        p.add_argument("--simulate", action="store_true", help="use the built-in SIMULATED test signal")
+        p.add_argument("--bin", type=int, default=1000, help="bin width, kHz")
+        p.add_argument("--gain", type=int, default=30)
+
+    sc = sub.add_parser("scan", help="spectral blind scan of the 950-2150 MHz IF band")
+    sweep_args(sc)
+    sc.add_argument("--lof", type=float, default=9750.0, help="LNB local oscillator, MHz")
+    sc.add_argument("--pol", default="H", choices=["H", "V", "L", "R"])
+    sc.add_argument("--threshold", type=float, default=3.0, help="dB above noise floor")
+    sc.add_argument("--reference", help="transponder list CSV for satellite pattern matching")
+    sc.set_defaults(fn=cmd_scan)
+
+    fi = sub.add_parser("finder", help="satellite finder with audible beep")
+    sweep_args(fi)
+    fi.add_argument("--window", type=float, nargs=2, metavar=("LO_MHZ", "HI_MHZ"), help="IF window to watch")
+    fi.add_argument("--silent", action="store_true")
+    fi.set_defaults(fn=cmd_finder)
+
+    pi = sub.add_parser("pids", help="services, PIDs and satellite position from a .ts recording")
+    pi.add_argument("input")
+    pi.add_argument("--max-mb", type=int, default=64)
+    pi.set_defaults(fn=cmd_pids)
+
+    co = sub.add_parser("constel", help="constellation and MER from an IQ capture")
+    co.add_argument("input")
+    co.add_argument("--rate", type=float, required=True, help="capture sample rate, S/s")
+    co.add_argument("--sr", type=float, required=True, help="symbol rate, sym/s")
+    co.add_argument("--mod", default="QPSK", choices=["BPSK", "QPSK", "8PSK"])
+    co.add_argument("--rolloff", type=float, default=0.35)
+    co.add_argument("--format", default="auto", choices=["auto", "cu8", "cs8", "cf32"])
+    co.set_defaults(fn=cmd_constel)
+
+    st = sub.add_parser("stream", help="stream a .ts to players on the local network")
+    st.add_argument("input")
+    st.add_argument("--port", type=int, default=8090)
+    st.add_argument("--follow", action="store_true", help="follow a file that is still being written")
+    st.set_defaults(fn=cmd_stream)
 
     l = sub.add_parser("lowsdr", help="SDR + leandvb low symbol rate")
     l.add_argument("--src", default="rtl", choices=SRC)
