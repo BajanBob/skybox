@@ -1,0 +1,93 @@
+name: Skybox Recon - Windows Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build and test Windows x64 package
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller pytest
+
+      - name: Unit tests and engine self-test (source)
+        run: |
+          python -m pytest -q tests
+          python skybox.py selftest
+
+      # The desktop window. --windowed = no console, so it does not flash and close.
+      - name: Build SkyboxRecon.exe (desktop GUI)
+        run: >
+          python -m PyInstaller --noconfirm --clean --onefile --windowed
+          --name SkyboxRecon
+          --hidden-import skybox
+          --hidden-import serial.tools.list_ports
+          skybox_gui.py
+
+      # Console engine for scripts and the Run-SkyboxRecon.bat menu.
+      - name: Build skybox-cli.exe (command-line engine)
+        run: >
+          python -m PyInstaller --noconfirm --onefile --console
+          --name skybox-cli
+          --hidden-import serial
+          skybox.py
+
+      - name: Test skybox-cli.exe
+        shell: pwsh
+        run: |
+          .\dist\skybox-cli.exe selftest
+          if ($LASTEXITCODE -ne 0) { throw "skybox-cli.exe self-test failed" }
+
+      - name: Test engine inside SkyboxRecon.exe
+        shell: pwsh
+        run: |
+          $p = Start-Process .\dist\SkyboxRecon.exe -ArgumentList '--cli','selftest' `
+                 -NoNewWindow -PassThru -RedirectStandardOutput cli-out.txt -RedirectStandardError cli-err.txt
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw "engine timed out" }
+          Get-Content cli-out.txt, cli-err.txt
+          if ($p.ExitCode -ne 0) { throw "SkyboxRecon.exe --cli selftest exit code $($p.ExitCode)" }
+          if (-not (Select-String -Path cli-out.txt -Pattern '0 failure\(s\)' -Quiet)) { throw "self-test output missing" }
+
+      - name: GUI start-up smoke test (window must open and stay up)
+        shell: pwsh
+        run: |
+          $p = Start-Process .\dist\SkyboxRecon.exe -ArgumentList '--smoke-test' -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw "GUI did not close after smoke test" }
+          if (Test-Path dist\SkyboxRecon-error.log) { Get-Content dist\SkyboxRecon-error.log }
+          if ($p.ExitCode -ne 0) { throw "GUI start-up failed, exit code $($p.ExitCode)" }
+
+      - name: Assemble Windows ZIP
+        shell: pwsh
+        run: |
+          $stage = "package\SkyboxRecon-Windows-x64"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item dist\SkyboxRecon.exe, dist\skybox-cli.exe $stage
+          Copy-Item Launch-SkyboxRecon.bat, Run-SkyboxRecon.bat, Create-Desktop-Shortcut.ps1, README-WINDOWS.txt $stage
+          Compress-Archive -Path "$stage\*" -DestinationPath package\SkyboxRecon-Windows-x64.zip -Force
+
+      - name: Upload Windows x64 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkyboxRecon-Windows-x64
+          path: package/SkyboxRecon-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30

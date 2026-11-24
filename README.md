@@ -6,9 +6,15 @@ control centre rather than printing CLI usage and exiting.
 
 ## Build on GitHub Actions
 Push this folder's contents to the `main` branch of `BajanBob/skybox`.
-The workflow `.github/workflows/windows-gui.yml` builds a Windows x64
-one-file GUI executable with PyInstaller and uploads `SkyboxRecon-Windows-GUI`
-as a workflow artifact.
+The workflow `.github/workflows/build-windows.yml` builds, tests and uploads
+the `SkyboxRecon-Windows-x64` ZIP artifact containing:
+
+- `SkyboxRecon.exe` — the desktop window (built from `skybox_gui.py`,
+  windowed, with the `skybox.py` engine bundled inside; run
+  `SkyboxRecon.exe --cli <command>` to use the engine directly).
+- `skybox-cli.exe` — the console engine (built from `skybox.py`).
+
+Do not commit `dist/`, `build/` or `.spec` files; CI produces them.
 
 ## Local run (Python 3.10+)
 ```powershell

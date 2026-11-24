@@ -680,11 +680,38 @@ def build_parser():
     return ap
 
 
+def _pause_if_double_clicked():
+    """Keep a double-clicked Windows console open so the output can be read."""
+    if os.name == "nt" and getattr(sys, "frozen", False) and sys.stdin and sys.stdin.isatty():
+        try:
+            input("\nPress Enter to close this window...")
+        except (EOFError, OSError):
+            pass
+
+
 def main(argv=None):
-    a = build_parser().parse_args(argv)
+    argv = sys.argv[1:] if argv is None else list(argv)
+    parser = build_parser()
+    if not argv:
+        # Started with no command (e.g. double-clicked): explain instead of
+        # printing an argparse error and closing instantly.
+        parser.print_help()
+        print("\nThis is the command-line engine. For the desktop window run "
+              "SkyboxRecon.exe (or `python skybox_gui.py`).")
+        _pause_if_double_clicked()
+        return 0
+    a = parser.parse_args(argv)
     try:
         return a.fn(a) or 0
     except RuntimeError as e:
+        log(f"error: {e}")
+        return 1
+    except FileNotFoundError as e:
+        log(f"error: {e.strerror or e}: {e.filename or 'required program'}. Check the "
+            "path, or install the external tool this command needs "
+            "(e.g. dvbv5-zap, leandvb, ffmpeg).")
+        return 2
+    except OSError as e:
         log(f"error: {e}")
         return 1
     except KeyboardInterrupt:

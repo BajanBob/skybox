@@ -1,0 +1,9 @@
+# PyInstaller output -- built by GitHub Actions, never committed
+build/
+dist/
+package/
+*.spec
+__pycache__/
+*.pyc
+.pytest_cache/
+SkyboxRecon-error.log
