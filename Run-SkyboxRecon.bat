@@ -1,10 +1,10 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-title SKYBOX RECON - Windows x64
-if not exist "SkyboxRecon.exe" (
-  echo SkyboxRecon.exe was not found in this folder.
-  echo If you are running from source, build the executable first.
+title SKYBOX RECON - command menu
+if not exist "skybox-cli.exe" (
+  echo skybox-cli.exe was not found in this folder.
+  echo Download the Windows ZIP from GitHub Actions and keep all files together.
   pause
   exit /b 1
 )
@@ -50,7 +50,7 @@ pause
 goto MENU
 
 :SELFTEST
-"%~dp0SkyboxRecon.exe" selftest
+"%~dp0skybox-cli.exe" selftest
 goto DONE
 :PORTS
 echo Available serial (COM) ports:
@@ -59,37 +59,37 @@ goto DONE
 :UART
 call :PORTPROMPT
 if not defined port goto MENU
-"%~dp0SkyboxRecon.exe" uart "%port%" --parity E --dwell 1
+"%~dp0skybox-cli.exe" uart "%port%" --parity E --dwell 1
 goto DONE
 :FW
-echo Usage: SkyboxRecon.exe fw "firmware-image.bin" [--carve] [--extract output-folder]
-"%~dp0SkyboxRecon.exe" fw --help
+echo Usage: skybox-cli.exe fw "firmware-image.bin" [--carve] [--extract output-folder]
+"%~dp0skybox-cli.exe" fw --help
 goto DONE
 :STATIC
-"%~dp0SkyboxRecon.exe" static --help
+"%~dp0skybox-cli.exe" static --help
 goto DONE
 :IPL
 echo WARNING: Do not use IPL flash-write on a physical receiver.
 echo Known addressing and write-path defects must be corrected and validated first.
-"%~dp0SkyboxRecon.exe" ipl --help
+"%~dp0skybox-cli.exe" ipl --help
 goto DONE
 :YMODEM
-"%~dp0SkyboxRecon.exe" ymodem --help
+"%~dp0skybox-cli.exe" ymodem --help
 goto DONE
 :USB
-"%~dp0SkyboxRecon.exe" usb --help
+"%~dp0skybox-cli.exe" usb --help
 goto DONE
 :TUNE
-"%~dp0SkyboxRecon.exe" tune --help
+"%~dp0skybox-cli.exe" tune --help
 goto DONE
 :LOWSDR
-"%~dp0SkyboxRecon.exe" lowsdr --help
+"%~dp0skybox-cli.exe" lowsdr --help
 goto DONE
 :REMUX
-"%~dp0SkyboxRecon.exe" remux --help
+"%~dp0skybox-cli.exe" remux --help
 goto DONE
 :HELP
-"%~dp0SkyboxRecon.exe" --help
+"%~dp0skybox-cli.exe" --help
 goto DONE
 
 :PORTPROMPT

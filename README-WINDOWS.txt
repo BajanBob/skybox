@@ -1,31 +1,28 @@
-SKYBOX RECON - WINDOWS x64 UPDATE PACKAGE
+SKYBOX RECON - WINDOWS x64
 
-CONTENTS
-- skybox.py: supplied Skybox Recon single-file source (unchanged)
-- Run-SkyboxRecon.bat: menu launcher; keeps output visible
-- requirements.txt: pyserial for serial hardware commands
-- .github/workflows/build-windows.yml: Windows x64 GitHub Actions build
+CONTENTS OF THE ZIP
+- SkyboxRecon.exe            Desktop window (double-click this).
+- skybox-cli.exe             Command-line engine for scripts and the menu.
+- Launch-SkyboxRecon.bat     Starts SkyboxRecon.exe.
+- Run-SkyboxRecon.bat        Text menu around skybox-cli.exe.
+- Create-Desktop-Shortcut.ps1  Adds a "Skybox Recon" desktop shortcut.
 
-BUILD / RELEASE
-1. Copy the contents into the root of https://github.com/BajanBob/skybox.
-2. Ensure the default branch is main (or change the workflow branch filter).
-3. Commit the workflow under .github/workflows/build-windows.yml.
-4. In GitHub, open Actions > Skybox Recon - Windows Build > Run workflow.
-5. Download the SkyboxRecon-Windows-x64 ZIP artifact after a successful run.
-6. Extract the ZIP and double-click Run-SkyboxRecon.bat.
+GETTING THE BUILD
+1. GitHub > BajanBob/skybox > Actions > "Skybox Recon - Windows Build".
+2. Open the latest green run and download the SkyboxRecon-Windows-x64 artifact.
+3. Extract the ZIP to a normal folder (not inside the ZIP viewer).
+4. Double-click SkyboxRecon.exe. The first start takes a few seconds while
+   the one-file program unpacks; then the window opens and stays open.
 
-The workflow packages SkyboxRecon.exe, Run-SkyboxRecon.bat, and this readme
-into one downloadable ZIP artifact.
+IF IT DOES NOT START
+- Windows SmartScreen may show "Windows protected your PC" for unsigned
+  programs: choose More info > Run anyway.
+- Some antivirus products quarantine PyInstaller one-file programs. Restore
+  the file / add an exclusion for the folder.
+- Any start-up error is shown in a dialog and written to
+  SkyboxRecon-error.log next to the exe (or in your user folder).
 
 SAFETY
-The launcher intentionally provides IPL help but does not offer a one-click
-flash-write action. The previously reviewed source has unresolved IPL write
-and addressing concerns. Do not use IPL flash-write against a physical
-receiver until those defects are corrected and independently validated.
-
-HARDWARE COMMANDS
-The program is a command-line toolkit, not yet a native graphical application.
-The menu invokes selftest, lists COM ports, starts UART probing, and displays
-command-specific help for operations that require additional arguments.
-Hardware operations require compatible hardware, correct wiring, and suitable
-external utilities/drivers. The self-test is offline and does not need a radio.
+The GUI does not expose firmware flashing. Do not use IPL flash-write
+against a physical receiver until the write path is independently
+validated. The self-test is offline and needs no hardware.

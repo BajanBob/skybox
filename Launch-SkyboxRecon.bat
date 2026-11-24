@@ -1,3 +1,8 @@
 @echo off
 cd /d "%~dp0"
-start "Skybox Recon" SkyboxRecon.exe
+if not exist "SkyboxRecon.exe" (
+  echo SkyboxRecon.exe was not found in this folder.
+  pause
+  exit /b 1
+)
+start "" "%~dp0SkyboxRecon.exe"

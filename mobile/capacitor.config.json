@@ -1,0 +1,6 @@
+{
+  "appId": "io.github.bajanbob.skyboxrecon",
+  "appName": "Skybox Recon",
+  "webDir": "www",
+  "android": { "backgroundColor": "#0b1220" }
+}
