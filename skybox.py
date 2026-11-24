@@ -489,6 +489,25 @@ def cmd_tune(a):
 # beryl: spectrum, blind scan, finder, PIDs, constellation, streaming
 # --------------------------------------------------------------------------- #
 
+def _band_range(a):
+    from skybox_recon.bands import BANDS, BandPlan, sweep_range
+    plan = BANDS[a.band]
+    start = a.start if a.start is not None else plan.start_mhz
+    stop = a.stop if a.stop is not None else plan.stop_mhz
+    sdr = "HackRF One" if a.tool == "hackrf_sweep" else a.sdr
+    lo, hi, warn = sweep_range(BandPlan("x", plan.lof_mhz, start, stop, 1, 1, None, ""), sdr)
+    if "cannot reach" in warn:
+        raise RuntimeError(warn)
+    if warn:
+        print("note: " + warn, file=sys.stderr)
+    return lo, hi
+
+
+def _lof(a):
+    from skybox_recon.bands import BANDS
+    return a.lof if a.lof is not None else BANDS[a.band].lof_mhz
+
+
 def _sweeps(a):
     from skybox_recon import spectrum
     if a.csv:
@@ -499,7 +518,8 @@ def _sweeps(a):
         print("SIMULATED test signal (not real reception)")
         sweeps = [demo_sweep(seed=1)]
     else:
-        cmd = spectrum.sweep_command(a.tool, bin_khz=a.bin, gain=a.gain, once=True)
+        lo, hi = _band_range(a)
+        cmd = spectrum.sweep_command(a.tool, lo, hi, bin_khz=a.bin, gain=a.gain, once=True)
         print(" ".join(cmd), file=sys.stderr)
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         sweeps = spectrum.read_sweeps_csv(out.stdout)
@@ -511,18 +531,23 @@ def _sweeps(a):
 def cmd_scan(a):
     from skybox_recon import spectrum
     from skybox_recon.advisor import CognitiveAdvisor, identify_satellite, load_reference
-    freqs, levels = _sweeps(a)[-1]
-    found = spectrum.detect_transponders(freqs, levels, lof_mhz=a.lof, pol=a.pol, threshold_db=a.threshold)
+    sweeps = _sweeps(a)
+    if not sweeps:
+        raise RuntimeError("no sweep data found")
+    freqs, levels = sweeps[-1]
+    lof = _lof(a)
+    found = spectrum.detect_transponders(freqs, levels, lof_mhz=lof, pol=a.pol, threshold_db=a.threshold)
     floor = spectrum.noise_floor(levels)
-    print(f"sweep {freqs[0]:.0f}-{freqs[-1]:.0f} MHz IF, {len(freqs)} bins, noise floor {floor:.1f} dB")
-    print(f"carriers: {len(found)} (LOF {a.lof:g} MHz, pol {a.pol}; symbol rates estimated from -3 dB width)")
+    print(f"band {a.band}: sweep {freqs[0]:g}-{freqs[-1]:g} MHz, {len(freqs)} bins, noise floor {floor:.1f} dB")
+    print(f"carriers: {len(found)} (LOF {lof:g} MHz{' = direct' if lof == 0 else ''}, pol {a.pol}; "
+          "symbol rates estimated from -3 dB width)")
     for t in found:
         print("  " + t.label())
     matches = identify_satellite(found, load_reference(a.reference)) if a.reference else None
     adv = CognitiveAdvisor()
-    adv.record(found, a.lof, a.pol, floor)
+    adv.record(found, lof, a.pol, floor)
     print("\nadvisor:")
-    for tip in adv.advise(found, floor, a.lof, a.pol, reference_matches=matches):
+    for tip in adv.advise(found, floor, lof, a.pol, reference_matches=matches):
         print("  " + str(tip))
     return 0
 
@@ -540,8 +565,8 @@ def cmd_finder(a):
             if not a.silent:
                 spectrum.play_tone(r.tone_hz, 400 if r.locked else 120)
         return 0
-    cmd = spectrum.sweep_command(a.tool, a.window[0] if a.window else 950, a.window[1] if a.window else 2150,
-                                 bin_khz=a.bin, gain=a.gain)
+    lo, hi = (a.window[0], a.window[1]) if a.window else _band_range(a)
+    cmd = spectrum.sweep_command(a.tool, lo, hi, bin_khz=a.bin, gain=a.gain)
     print(" ".join(cmd) + "   (Ctrl-C to stop)")
 
     def on_sweep(f, l):
@@ -796,7 +821,15 @@ def build_parser():
     t.add_argument("--print-only", action="store_true", help="show the channel file and command only")
     t.set_defaults(fn=cmd_tune)
 
+    from skybox_recon.bands import BANDS as _BANDS, SDRS as _SDRS
+
     def sweep_args(p):
+        p.add_argument("--band", default="Ku-band low (LO 9750)", choices=list(_BANDS),
+                       help="band plan (direct L/S/C up to 6 GHz, or C/Ku/Ka via LNB)")
+        p.add_argument("--start", type=float, help="sweep start, MHz (overrides the band plan)")
+        p.add_argument("--stop", type=float, help="sweep stop, MHz (overrides the band plan)")
+        p.add_argument("--sdr", default=next(iter(_SDRS)), choices=list(_SDRS)[:3],
+                       help="RTL-SDR model (sets the reachable range); HackRF is implied by --tool hackrf_sweep")
         p.add_argument("--tool", default="rtl_power", choices=["rtl_power", "hackrf_sweep"])
         p.add_argument("--csv", help="read a saved rtl_power/hackrf_sweep CSV instead of live capture")
         p.add_argument("--simulate", action="store_true", help="use the built-in SIMULATED test signal")
@@ -805,7 +838,7 @@ def build_parser():
 
     sc = sub.add_parser("scan", help="spectral blind scan of the 950-2150 MHz IF band")
     sweep_args(sc)
-    sc.add_argument("--lof", type=float, default=9750.0, help="LNB local oscillator, MHz")
+    sc.add_argument("--lof", type=float, help="LNB local oscillator, MHz (default from --band; 0 = direct)")
     sc.add_argument("--pol", default="H", choices=["H", "V", "L", "R"])
     sc.add_argument("--threshold", type=float, default=3.0, help="dB above noise floor")
     sc.add_argument("--reference", help="transponder list CSV for satellite pattern matching")

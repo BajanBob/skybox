@@ -15,6 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import dvb, spectrum
 from .advisor import CognitiveAdvisor, acquisition_plan, identify_satellite, load_reference
+from .bands import BANDS, SDRS, sweep_range
 
 BG, PANEL, INK, SUB, ACCENT, AMBER, GREEN = "#0b1220", "#142238", "#e6edf7", "#9fb2cc", "#1677d2", "#f5c451", "#3ccf91"
 PLOT_BG, GRID = "#07101d", "#1b2c44"
@@ -63,27 +64,41 @@ class SpectrumPanel:
         self.frame = ttk.Frame(nb, padding=14)
         nb.add(self.frame, text="Spectrum")
         heading(self.frame, "Spectrum analyser, waterfall and satellite finder",
-                "Sweeps the 950-2150 MHz dish IF with an RTL-SDR (rtl_power) or HackRF One (hackrf_sweep). "
-                "Power the LNB with 13/18 V from a receiver or power inserter. The finder beeps faster and higher "
-                "as the signal rises and holds a steady tone at lock level.")
+                "L-band, S-band and C-band up to 6 GHz received directly (HackRF One; RTL-SDRs reach about "
+                "1.75-2.2 GHz), and C, Ku and Ka bands through a dish LNB (950-2150 MHz IF). The finder beeps "
+                "faster and higher as the signal rises and holds a steady tone at lock level.")
         row = ttk.Frame(self.frame)
-        row.pack(fill="x", pady=(0, 8))
+        row.pack(fill="x", pady=(0, 6))
         self.source = tk.StringVar(value="rtl_power")
-        field(row, "Source", self.source, 20, ["rtl_power", "hackrf_sweep", "CSV file…", SIM])
+        field(row, "Source", self.source, 18, ["rtl_power", "hackrf_sweep", "CSV file…", SIM])
+        self.band = tk.StringVar(value="Ku-band low (LO 9750)")
+        bw = field(row, "Band", self.band, 30, list(BANDS))
+        bw.bind("<<ComboboxSelected>>", lambda e: self.apply_band())
+        self.tuner = tk.StringVar(value=next(iter(SDRS)))
+        tw = field(row, "Tuner", self.tuner, 30, list(SDRS))
+        tw.bind("<<ComboboxSelected>>", lambda e: self.apply_band(keep_values=True))
+        row2 = ttk.Frame(self.frame)
+        row2.pack(fill="x", pady=(0, 6))
         self.lof = tk.StringVar(value="9750")
-        field(row, "LNB LOF (MHz)", self.lof, 8, ["9750", "10600", "10000", "10700", "10750", "11250", "11300", "5150"], False)
+        field(row2, "LNB LOF (MHz, 0 = direct)", self.lof, 8)
+        self.f_start = tk.StringVar(value="950")
+        field(row2, "Sweep start (MHz)", self.f_start, 8)
+        self.f_stop = tk.StringVar(value="1950")
+        field(row2, "Sweep stop (MHz)", self.f_stop, 8)
         self.pol = tk.StringVar(value="H")
-        field(row, "Polarization (LNB 18 V = H)", self.pol, 4, ["H", "V", "L", "R"])
+        field(row2, "Polarization (LNB 18 V = H)", self.pol, 4, ["H", "V", "L", "R"])
         self.gain = tk.StringVar(value="30")
-        field(row, "Gain (dB)", self.gain, 5)
+        field(row2, "Gain (dB)", self.gain, 5)
         self.bin = tk.StringVar(value="1000")
-        field(row, "Bin (kHz)", self.bin, 6, ["250", "500", "1000", "2000"])
-        btns = ttk.Frame(row)
+        field(row2, "Bin (kHz)", self.bin, 6, ["10", "25", "100", "250", "500", "1000", "2000"], False)
+        btns = ttk.Frame(row2)
         btns.pack(side="left", pady=(14, 0))
         self.start_btn = ttk.Button(btns, text="Start", style="Accent.TButton", command=self.start)
         self.start_btn.pack(side="left")
         ttk.Button(btns, text="Stop", command=self.stop).pack(side="left", padx=6)
 
+        self.band_note = ttk.Label(self.frame, text="", style="Sub.TLabel", wraplength=1150, justify="left")
+        self.band_note.pack(anchor="w")
         self.banner = tk.Label(self.frame, text="", bg=BG, fg=AMBER, font=("Segoe UI", 10, "bold"))
         self.banner.pack(anchor="w")
         body = ttk.Frame(self.frame)
@@ -112,10 +127,10 @@ class SpectrumPanel:
         self.beep = tk.BooleanVar(value=True)
         ttk.Checkbutton(side, text="Beep", variable=self.beep).pack(anchor="w")
         ttk.Button(side, text="Reset peak", command=lambda: self.finder.reset_peak()).pack(anchor="w", pady=6)
-        tk.Label(side, text="Watch window (IF MHz, blank = full band)", bg=PANEL, fg=SUB, wraplength=210,
-                 justify="left").pack(anchor="w", pady=(8, 2))
         wrow = tk.Frame(side, bg=PANEL)
-        wrow.pack(anchor="w")
+        wrow.pack(anchor="w", pady=(8, 0))
+        tk.Label(wrow, text="Watch window (IF MHz, blank = full band)", bg=PANEL, fg=SUB, wraplength=210,
+                 justify="left").pack(anchor="w", pady=(0, 2))
         self.win_lo, self.win_hi = tk.StringVar(), tk.StringVar()
         ttk.Entry(wrow, textvariable=self.win_lo, width=7).pack(side="left")
         ttk.Entry(wrow, textvariable=self.win_hi, width=7).pack(side="left", padx=4)
@@ -162,7 +177,13 @@ class SpectrumPanel:
                                  "and connect the SDR to the dish cable through an LNB power inserter.")
             return
         try:
-            cmd = spectrum.sweep_command(src, bin_khz=int(self.bin.get()), gain=int(self.gain.get()))
+            lo, hi, warn = self.sweep_args()
+            if "cannot reach" in warn:
+                messagebox.showerror("Spectrum", warn)
+                return
+            if warn:
+                self.app.log("Spectrum: " + warn)
+            cmd = spectrum.sweep_command(src, lo, hi, bin_khz=int(self.bin.get()), gain=int(self.gain.get()))
         except ValueError as e:
             messagebox.showerror("Spectrum", str(e))
             return
@@ -183,7 +204,14 @@ class SpectrumPanel:
 
     def _sim_tick(self):
         from .testsignals import demo_sweep
-        self.on_sweep(*demo_sweep(gain=self.sim_gain.get(), seed=int(time.time() * 10) % 1000))
+        f, l = demo_sweep(gain=self.sim_gain.get(), seed=int(time.time() * 10) % 1000)
+        try:
+            lo, hi = float(self.f_start.get()), float(self.f_stop.get())
+        except ValueError:
+            lo, hi = 950.0, 2150.0
+        if hi > lo and (lo, hi) != (950.0, 2150.0):   # map the simulated carriers onto the chosen band
+            f = [lo + (x - 950.0) * (hi - lo) / 1200.0 for x in f]
+        self.on_sweep(f, l)
         self._sim_job = self.app.after(700, self._sim_tick)
 
     def _csv_tick(self, i):
@@ -196,6 +224,32 @@ class SpectrumPanel:
             return (lo, hi) if hi > lo else None
         except ValueError:
             return None
+
+    def apply_band(self, keep_values: bool = False):
+        plan = BANDS.get(self.band.get())
+        if plan is None:
+            return
+        if not keep_values and plan.name != "Custom":
+            self.lof.set(f"{plan.lof_mhz:g}")
+            self.f_start.set(f"{plan.start_mhz:g}")
+            self.f_stop.set(f"{plan.stop_mhz:g}")
+            self.bin.set(str(plan.bin_khz))
+            self.app.blindscan.min_sr.set(str(plan.min_sr_ksym)) if hasattr(self.app, "blindscan") else None
+            if plan.lnb and hasattr(self.app, "tuning"):
+                self.app.tuning.v["lnb"].set(plan.lnb)
+        tool = SDRS.get(self.tuner.get(), ("rtl_power",))[0]
+        if self.source.get() in ("rtl_power", "hackrf_sweep") and tool in ("rtl_power", "hackrf_sweep"):
+            self.source.set(tool)
+        _lo, _hi, warn = self.sweep_args()
+        self.band_note.config(text=plan.note + (f"  ⚠ {warn}" if warn else ""))
+
+    def sweep_args(self) -> tuple[float, float, str]:
+        from .bands import BandPlan
+        try:
+            lo, hi = float(self.f_start.get()), float(self.f_stop.get())
+        except ValueError:
+            lo, hi = 950.0, 2150.0
+        return sweep_range(BandPlan("x", self.lof_mhz(), lo, hi, 1000, 1, None, ""), self.tuner.get())
 
     def lof_mhz(self) -> float:
         try:
@@ -243,15 +297,20 @@ class SpectrumPanel:
             x = sx(f)
             c.create_line(x, 10, x, bottom, fill=GRID)
             rf = dvb.if_to_rf(f, self.lof_mhz())
-            c.create_text(x, bottom + 9, text=f"{f:.0f}", fill=SUB, font=("Consolas", 8))
-            c.create_text(x, bottom + 20, text=f"{rf:.0f}", fill="#6f86a6", font=("Consolas", 8))
+            fmt = "{:.1f}" if (f1 - f0) < 100 else "{:.0f}"
+            c.create_text(x, bottom + 9, text=fmt.format(f), fill=SUB, font=("Consolas", 8))
+            if self.lof_mhz() != 0:
+                c.create_text(x, bottom + 20, text=fmt.format(rf), fill="#6f86a6", font=("Consolas", 8))
         for k in range(5):
             v = hi_db - (hi_db - lo_db) * k / 4
             y = sy(v)
             c.create_line(left, y, w - 10, y, fill=GRID)
             c.create_text(left - 6, y, text=f"{v:.0f}", fill=SUB, anchor="e", font=("Consolas", 8))
-        c.create_text(4, bottom + 9, text="IF", fill=SUB, anchor="w", font=("Consolas", 8))
-        c.create_text(4, bottom + 20, text="RF", fill="#6f86a6", anchor="w", font=("Consolas", 8))
+        if self.lof_mhz() != 0:
+            c.create_text(4, bottom + 9, text="IF", fill=SUB, anchor="w", font=("Consolas", 8))
+            c.create_text(4, bottom + 20, text="RF", fill="#6f86a6", anchor="w", font=("Consolas", 8))
+        else:
+            c.create_text(4, bottom + 9, text="MHz", fill=SUB, anchor="w", font=("Consolas", 8))
         step = max(1, len(freqs) // 1500)
         pts = []
         for f, v in zip(freqs[::step], levels[::step]):
@@ -827,7 +886,9 @@ class AdvisorPanel:
                 elif self.spec.last:
                     sweep = self.spec.last
                 else:
-                    cmd = spectrum.sweep_command(self.spec.source.get(), once=True)
+                    lo, hi, _w = self.spec.sweep_args()
+                    cmd = spectrum.sweep_command(self.spec.source.get(), lo, hi,
+                                                 bin_khz=int(self.spec.bin.get()), once=True)
                     out = subprocess.run(cmd, capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW)
                     sweeps = spectrum.read_sweeps_csv(out.stdout)
                     if not sweeps:

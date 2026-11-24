@@ -150,3 +150,25 @@ def test_lan_stream_server(tmp_path):
     finally:
         srv.stop()
     assert srv.urls()[0].endswith(f":{srv.port}/stream.ts")
+
+
+def test_band_plans_and_sdr_ranges():
+    from skybox_recon.bands import BANDS, sweep_range
+    nano = "RTL-SDR R820T2 / R828D (e.g. NESDR Nano 3, RTL-SDR Blog V3/V4)"
+    lo, hi, warn = sweep_range(BANDS["S-band direct 2-4 GHz"], nano)
+    assert "cannot reach" in warn
+    assert sweep_range(BANDS["Wideband direct 1-6000 MHz"], "HackRF One")[:2] == (1, 6000)
+    assert sweep_range(BANDS["C-band LNB (LO 5150)"], nano) == (950, 1450, "")
+    assert dvb.if_to_rf(1575.42, 0) == 1575.42                     # direct: GNSS L1 stays put
+    assert dvb.if_to_rf(1000, BANDS["Ka-band LNB (LO 18250)"].lof_mhz) == 19250
+    assert dvb.if_to_rf(1000, 5150) == 4150                          # C-band inverts
+
+
+def test_direct_l_band_narrow_carriers():
+    # Simulated carriers remapped onto 1525-1559 MHz with 10 kHz bins: narrow carriers.
+    f, l = demo_sweep(step_mhz=1200 / 3400, start_mhz=950, stop_mhz=2150, seed=3)
+    f = [1525 + (x - 950) * 34 / 1200 for x in f]
+    found = spectrum.detect_transponders(f, l, lof_mhz=0, min_sr_ksym=1)
+    assert len(found) == len(DEMO_TRANSPONDERS)
+    assert all(t.rf_mhz == t.if_mhz for t in found)
+    assert 1525 < found[0].rf_mhz < 1559 and found[0].sr_ksym < 1500
