@@ -37,7 +37,7 @@ py skybox_gui.py
 
 | Feature | Desktop (Windows / Linux) | Android | Needs |
 |---|---|---|---|
-| Spectrum analyser + waterfall (950–2150 MHz IF, IF and RF scales) | ✓ | – | RTL-SDR (`rtl_power`) or HackRF (`hackrf_sweep`), LNB power inserter |
+| Spectrum analyser + waterfall: L, S and C band direct up to 6 GHz; C, Ku and Ka bands via LNB | ✓ | – | HackRF One (1–6000 MHz) or RTL-SDR (to ~1.77–2.2 GHz); LNB power inserter for dish bands |
 | Satellite finder with beep (pitch and rate rise with C/N, steady tone at lock, peak hold) | ✓ | – | as above |
 | Blind scan: carrier detection, symbol-rate estimate from −3 dB width, duplicate filter | ✓ | – | as above |
 | Constellation + MER/EVM (BPSK, QPSK, 8PSK) from IQ captures | ✓ | – | IQ file, or `rtl_sdr` / `hackrf_transfer` |
@@ -55,6 +55,18 @@ exists so each feature can be tried and tested without a dish.
 Not included: audio/video decoding (use VLC/mpv on the stream), conditional-access
 descrambling, and firmware flashing from the GUI. Real reception of each DVB-S2X
 mode depends on the demodulator silicon and driver.
+
+## Band plans
+
+| Band plan | Reception | Sweep | Receiver |
+|---|---|---|---|
+| L-band 1–2 GHz, Inmarsat 1525–1559 MHz | direct (antenna + LNA) | RF | RTL-SDR or HackRF |
+| S-band 2–4 GHz, C-band 3.4–4.2 GHz, wideband 1–6000 MHz | direct | RF | HackRF One |
+| C-band (LO 5150, inverted) | LNB | 950–1450 MHz IF | any |
+| Ku low / high (LO 9750 / 10600) | LNB | 950–2150 MHz IF | E4000 RTL-SDR or HackRF for the full IF |
+| Ka-band (LO 18250 / 19250 / 20250) | LNB | 950–2150 MHz IF | E4000 RTL-SDR or HackRF |
+
+The sweep is clipped to the selected receiver's range, and an unreachable band is refused with a clear message.
 
 ## Getting started
 

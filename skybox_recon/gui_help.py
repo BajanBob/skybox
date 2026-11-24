@@ -15,18 +15,10 @@ from .advisor import data_dir
 
 SETTINGS = os.path.join(data_dir(), "settings.json")
 
-# Usable IF range per receiver (MHz). A dish LNB delivers 950-2150 MHz.
-TUNERS = {
-    "RTL-SDR E4000 (e.g. NESDR SMArTee XTR)": ("rtl_power", 950.0, 2150.0),
-    "RTL-SDR R820T2 / R828D (e.g. NESDR Nano 3, RTL-SDR Blog V3/V4)": ("rtl_power", 950.0, 1750.0),
-    "HackRF One": ("hackrf_sweep", 950.0, 2150.0),
-    "No SDR yet (simulated test signal)": ("Simulated test signal", 950.0, 2150.0),
-}
-BANDS = {
-    "Ku-band low (10.70-11.70 GHz, 22 kHz off)": ("9750", "UNIVERSAL"),
-    "Ku-band high (11.70-12.75 GHz, 22 kHz on)": ("10600", "UNIVERSAL"),
-    "C-band (3.7-4.2 GHz, LO 5150 MHz)": ("5150", "C-BAND"),
-}
+from .bands import BANDS as BAND_PLANS
+from .bands import SDRS as TUNERS
+
+BANDS = {name: (f"{p.lof_mhz:g}", p.lnb or "UNIVERSAL") for name, p in BAND_PLANS.items() if name != "Custom"}
 
 
 def load_settings() -> dict | None:
@@ -104,8 +96,14 @@ TIPS = {
                  "rises and carriers look flattened.",
     "Bin (kHz)": "Width of each spectrum point. 1000 kHz is quick; 250-500 kHz gives sharper symbol-rate "
                  "estimates but sweeps more slowly.",
-    "Tuner": "Your SDR model sets how far up the sweep goes: R820T2/R828D dongles stop at about 1750 MHz; "
-             "E4000 RTL-SDRs and the HackRF reach the full 950-2150 MHz.",
+    "Tuner": "Your SDR model limits the sweep: R820T2/R828D dongles reach about 1766 MHz, E4000 about 2200 MHz "
+             "(with a gap near 1100-1250 MHz), HackRF One 1-6000 MHz.",
+    "Band": "Band plan: direct L/S/C-band reception up to 6 GHz, or C, Ku and Ka bands through a dish LNB. "
+            "Sets the LOF, sweep range and bin width.",
+    "LNB LOF (MHz, 0 = direct)": "LNB local oscillator. 0 means no LNB (antenna straight into the SDR). C-band 5150, "
+                                 "Ku 9750/10600, Ka typically 18250-21200: check your LNB label.",
+    "Sweep start (MHz)": "Lowest frequency the SDR sweeps (IF when an LNB is used).",
+    "Sweep stop (MHz)": "Highest frequency the SDR sweeps. Clipped to what your SDR can reach.",
     "Start": "Begin sweeping. The trace, waterfall and finder update with every sweep.",
     "Stop": "Stop the current sweep or job.",
     "Beep": "Audible finder: higher and faster beeps as signal improves, steady tone at lock level.",
@@ -220,8 +218,8 @@ class SetupWizard(tk.Toplevel):
         self.minsize(600, 480)
         self.transient(app)
         prev = load_settings() or {}
-        self.band = tk.StringVar(value=prev.get("band", next(iter(BANDS))))
-        self.tuner = tk.StringVar(value=prev.get("tuner", next(iter(TUNERS))))
+        self.band = tk.StringVar(value=prev.get("band") if prev.get("band") in BANDS else "Ku-band low (LO 9750)")
+        self.tuner = tk.StringVar(value=prev.get("tuner") if prev.get("tuner") in TUNERS else next(iter(TUNERS)))
         self.power = tk.StringVar(value=prev.get("power", "Fixed 18 V inserter (horizontal)"))
         self.checks = [tk.BooleanVar(value=False) for _ in range(4)]
         self.step = 0
@@ -279,15 +277,14 @@ class SetupWizard(tk.Toplevel):
 
     def s_band(self):
         self.clear("Which band?",
-                   "Ku-band uses a small offset dish and a Universal LNB. C-band uses a larger dish and a C-band "
-                   "LNBF (choose one with a 5G filter). With a dual C/Ku LNBF and a DiSEqC switch you can use both; "
-                   "pick the one to start with.")
+                   "Direct bands (L, S, C up to 6 GHz) use an antenna and LNA straight into the SDR; above about "
+                   "2 GHz this needs a HackRF One. C, Ku and Ka bands through a dish use an LNB. Pick one to start with.")
         self.radio(self.band, list(BANDS))
 
     def s_sdr(self):
         self.clear("Which SDR is connected?",
-                   "The dish cable carries 950-2150 MHz. R820T2/R828D dongles reach about 1750 MHz, which still "
-                   "covers all of C-band (IF 950-1450 MHz) and most of each Ku band.")
+                   "R820T2/R828D dongles reach about 1766 MHz, E4000 about 2200 MHz, HackRF One up to 6000 MHz. "
+                   "The sweep is clipped to what your SDR can reach.")
         self.radio(self.tuner, list(TUNERS))
         st = ttk.Frame(self.body)
         st.pack(anchor="w", pady=(14, 0))
@@ -328,10 +325,13 @@ class SetupWizard(tk.Toplevel):
         self.summary = ttk.Label(self.body, style="Sub.TLabel", wraplength=620, justify="left")
         self.summary.pack(anchor="w", pady=10)
         lof, lnb = BANDS[self.band.get()]
-        tool, lo, hi = TUNERS[self.tuner.get()]
+        from .bands import sweep_range
+        lo, hi, warn = sweep_range(BAND_PLANS[self.band.get()], self.tuner.get())
+        tool = TUNERS[self.tuner.get()][0]
         unchecked = sum(not v.get() for v in self.checks[:2])
         self.summary.config(text=f"Band: {self.band.get()}\nLOF {lof} MHz · LNB preset {lnb}\n"
-                                 f"SDR: {self.tuner.get()} → sweep {lo:.0f}-{hi:.0f} MHz with {tool}\n"
+                                 f"SDR: {self.tuner.get()} → sweep {lo:g}-{hi:g} MHz with {tool}\n"
+                                 + (f"Note: {warn}\n" if warn else "") +
                                  f"Power: {self.power.get()}"
                                  + ("\n\nWarning: the DC block and power-off checks are not ticked." if unchecked else ""))
 
@@ -345,15 +345,19 @@ class SetupWizard(tk.Toplevel):
 
 
 def apply_settings(app, data: dict) -> None:
-    lof, lnb = BANDS.get(data.get("band"), ("9750", "UNIVERSAL"))
-    tool, _lo, _hi = TUNERS.get(data.get("tuner"), TUNERS[next(iter(TUNERS))])
     spec = app.spectrum
-    spec.lof.set(lof)
+    band = data.get("band")
+    if band not in BAND_PLANS:
+        band = "Ku-band low (LO 9750)"
+    tool = TUNERS.get(data.get("tuner"), TUNERS[next(iter(TUNERS))])[0]
+    spec.tuner.set(data.get("tuner") if data.get("tuner") in TUNERS else next(iter(TUNERS)))
+    spec.band.set(band)
     spec.source.set(tool)
-    spec.tuner.set(data.get("tuner", next(iter(TUNERS))))
+    spec.apply_band()
     power = data.get("power", "")
     if "13 V" in power and "18" not in power:
         spec.pol.set("V")
     elif "18 V" in power and "13" not in power:
         spec.pol.set("H")
-    app.tuning.v["lnb"].set(lnb)
+    if BAND_PLANS[band].lnb:
+        app.tuning.v["lnb"].set(BAND_PLANS[band].lnb)

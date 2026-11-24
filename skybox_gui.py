@@ -189,6 +189,7 @@ class SkyboxGUI(tk.Tk):
         self.serial_tab = self._serial_tab()
         self.diag_tab = self._diagnostics_tab()
         self._overview()
+        self.spectrum.apply_band()
 
     def _overview(self) -> None:
         self.tabs.insert(0, self.dashboard, text="Overview")

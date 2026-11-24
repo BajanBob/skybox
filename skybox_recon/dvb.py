@@ -43,11 +43,16 @@ IF_MIN_MHZ, IF_MAX_MHZ = 950.0, 2150.0
 
 
 def if_to_rf(if_mhz: float, lof_mhz: float) -> float:
-    """C-band LNBs (LOF below the signal) invert the spectrum: RF = LOF - IF."""
+    """LOF 0 = direct reception (no LNB). C-band LNBs (LOF above the signal)
+    invert the spectrum: RF = LOF - IF. Ku and Ka LNBs: RF = LOF + IF."""
+    if lof_mhz == 0:
+        return if_mhz
     return lof_mhz - if_mhz if lof_mhz < 6000 else lof_mhz + if_mhz
 
 
 def rf_to_if(rf_mhz: float, lof_mhz: float) -> float:
+    if lof_mhz == 0:
+        return rf_mhz
     return lof_mhz - rf_mhz if lof_mhz < 6000 else rf_mhz - lof_mhz
 
 

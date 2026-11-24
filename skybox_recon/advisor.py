@@ -130,12 +130,12 @@ class CognitiveAdvisor:
             if abs(delta) >= 1:
                 tips.append(Advice("info", f"Best C/N {'up' if delta > 0 else 'down'} {abs(delta):.1f} dB "
                                    f"since the last {pol} scan ({len(prev['carriers'])} -> {len(found)} carriers)."))
-        edge = [t for t in found if t.if_mhz < IF_MIN_MHZ + 10 or t.if_mhz > IF_MAX_MHZ - 10]
+        edge = [] if lof_mhz == 0 else [t for t in found if t.if_mhz < IF_MIN_MHZ + 10 or t.if_mhz > IF_MAX_MHZ - 10]
         if edge:
             tips.append(Advice("info", f"{len(edge)} carrier(s) at the edge of the IF band may be cut off; "
                                "try the other LNB band (22 kHz tone on/off)."))
         narrow = [t for t in found if t.sr_ksym < 2000]
-        if narrow:
+        if narrow and lof_mhz != 0:
             tips.append(Advice("action", f"{len(narrow)} narrow carrier(s) under 2 Msym/s: use the SDR "
                                "low-symbol-rate path (leandvb) and the Constellation tab."))
         wide = [t for t in found if t.sr_ksym > 45000]

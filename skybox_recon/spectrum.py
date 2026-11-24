@@ -167,12 +167,15 @@ class Transponder:
     pol: str = "?"
 
     def label(self) -> str:
+        if self.rf_mhz == self.if_mhz:
+            return (f"{self.rf_mhz:9.3f} MHz {self.pol}  "
+                    f"~{self.sr_ksym:>6} ksym/s  C/N {self.snr_db:4.1f} dB")
         return (f"{self.rf_mhz:9.1f} MHz {self.pol}  (IF {self.if_mhz:7.1f})  "
                 f"~{self.sr_ksym:>6} ksym/s  C/N {self.snr_db:4.1f} dB")
 
 
 def detect_transponders(freqs: list[float], levels: list[float], lof_mhz: float = 9750.0,
-                        pol: str = "?", threshold_db: float = 3.0, min_bw_mhz: float = 0.5,
+                        pol: str = "?", threshold_db: float = 3.0, min_bw_mhz: float | None = None,
                         max_bw_mhz: float = 72.0, min_sr_ksym: int = 100,
                         max_sr_ksym: int = 72000) -> list[Transponder]:
     """Spectral blind scan: carriers that rise threshold_db above the floor.
@@ -183,6 +186,8 @@ def detect_transponders(freqs: list[float], levels: list[float], lof_mhz: float 
     if len(freqs) < 3:
         return []
     step = (freqs[-1] - freqs[0]) / (len(freqs) - 1)
+    if min_bw_mhz is None:
+        min_bw_mhz = 2.5 * step        # wider than a noise spike (1-2 bins)
     lv = smooth(levels, 3)
     floor = noise_floor(lv)
     found: list[Transponder] = []
@@ -215,9 +220,9 @@ def detect_transponders(freqs: list[float], levels: list[float], lof_mhz: float 
         f_lo, f_hi = cross(a, a - 1), cross(b, b + 1)
         bw = max(step, f_hi - f_lo)
         centre = (f_lo + f_hi) / 2
-        sr = int(round(bw * 1000))
+        sr = max(1, int(round(bw * 1000)))
         if min_bw_mhz <= bw <= max_bw_mhz and min_sr_ksym <= sr <= max_sr_ksym:
-            found.append(Transponder(round(centre, 2), round(if_to_rf(centre, lof_mhz), 1), round(bw, 2),
+            found.append(Transponder(round(centre, 4), round(if_to_rf(centre, lof_mhz), 4), round(bw, 4),
                                      sr, round(peak, 1), round(peak - floor, 1), pol))
         i = j + 1
     return merge_duplicates(found)
