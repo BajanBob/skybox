@@ -172,7 +172,12 @@ TIPS = {
     "Analyze image": "Read-only firmware analysis: hashes, entropy map, signatures, partition records.",
     "Probe UART": "Find the receiver's serial console baud rate. Use a 3.3 V USB-TTL adapter; power-cycle "
                   "the receiver after starting.",
-    "Refresh": "Re-list serial ports.",
+    "Refresh": "Re-list serial ports. Ports are also detected automatically every few seconds.",
+    "Detect devices": "Scan USB now for SDRs (RTL-SDR, HackRF, bladeRF, Airspy, SDRplay) and USB-serial "
+                      "adapters (CP210x, CH340, FTDI, PL2303, ESP32). The app also checks every 3 seconds and "
+                      "picks the tuner and serial port for you. It warns if Windows still needs the Zadig driver.",
+    "Setup wizard": "Step-by-step setup: band, SDR (auto-detected), LNB power, wiring checks and a first test.",
+    "Open application folder": "Open the folder that holds the program, tools and your settings.",
     "Open": "Open this tool.",
 }
 
@@ -253,6 +258,7 @@ class SetupWizard(tk.Toplevel):
         self.progress.config(text=f"Step {self.step + 1} of {len(self.steps)}")
         self.back_btn.state(["disabled"] if self.step == 0 else ["!disabled"])
         self.next_btn.config(text="Finish" if self.step == len(self.steps) - 1 else "Next")
+        attach_tips(self)
 
     def next(self):
         if self.step == len(self.steps) - 1:
@@ -285,7 +291,24 @@ class SetupWizard(tk.Toplevel):
         self.clear("Which SDR is connected?",
                    "R820T2/R828D dongles reach about 1766 MHz, E4000 about 2200 MHz, HackRF One up to 6000 MHz. "
                    "The sweep is clipped to what your SDR can reach.")
+        from . import devices as dv
+        found = list(getattr(self.app, "devices", []) or [])
+        sdr = dv.best_sdr(found)
+        if sdr and sdr.sdr_key and not sdr.problem:
+            self.tuner.set(sdr.sdr_key)
         self.radio(self.tuner, list(TUNERS))
+        det = ttk.Frame(self.body)
+        det.pack(anchor="w", pady=(12, 0))
+        ttk.Label(det, text="Detected on USB:", style="Sub.TLabel").pack(anchor="w")
+        if found:
+            for d in found:
+                ok = not d.problem
+                ttk.Label(det, text=f"{'✓' if ok else '⚠'}  {d.label()}", wraplength=620, justify="left",
+                          foreground="#3ccf91" if ok else "#f5c451").pack(anchor="w")
+        else:
+            ttk.Label(det, text="✗  Nothing yet — plug in the SDR, wait a few seconds, then press Detect devices.",
+                      foreground="#f5c451").pack(anchor="w")
+        ttk.Button(det, text="Detect devices", command=self._redetect).pack(anchor="w", pady=4)
         st = ttk.Frame(self.body)
         st.pack(anchor="w", pady=(14, 0))
         for tool in ("rtl_power", "hackrf_sweep"):
@@ -296,6 +319,11 @@ class SetupWizard(tk.Toplevel):
                   text="Not found? Install the RTL-SDR or HackRF tools and put rtl_power / hackrf_sweep on your PATH "
                        "or in the application folder. On Windows, set the RTL-SDR driver to WinUSB once with Zadig."
                   ).pack(anchor="w", pady=(8, 0))
+
+    def _redetect(self):
+        from . import devices as dv
+        self.app.devices = dv.detect(probe_tuner=True)
+        self.render()
 
     def s_power(self):
         self.clear("How is the LNB powered?",

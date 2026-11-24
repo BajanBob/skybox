@@ -98,6 +98,12 @@ class SkyboxGUI(tk.Tk):
         self.after(100, self._drain_events)
         from skybox_recon import gui_help
         self.after(300, lambda: self.log(f"Hover help: {gui_help.attach_tips(self)} tips ready."))
+        self._dev_seen: set[str] = set()
+        self._dev_warned: set[str] = set()
+        self._dev_busy = False
+        self.devices = []
+        if not smoke:
+            self.after(1200, self._poll_devices)
         settings = gui_help.load_settings()
         if settings:
             gui_help.apply_settings(self, settings)
@@ -162,15 +168,15 @@ class SkyboxGUI(tk.Tk):
         # Footer is packed before the notebook so it is never squeezed off-screen.
         footer = ttk.Frame(self, padding=(20, 4, 20, 12))
         footer.pack(side="bottom", fill="x")
-        ttk.Label(
-            footer,
-            text=f"Skybox Recon v{APP_VERSION} • Hardware functions require compatible receiver interfaces/drivers",
-            style="Sub.TLabel",
-        ).pack(side="left")
+        self.dev_var = tk.StringVar(value="Devices: checking USB…")
+        ttk.Label(footer, textvariable=self.dev_var, style="Sub.TLabel").pack(side="left")
+        ttk.Label(footer, text=f"   v{APP_VERSION}", style="Sub.TLabel").pack(side="left")
         ttk.Button(footer, text="Open application folder",
                    command=lambda: self.open_path(APP_DIR)).pack(side="right")
         ttk.Button(footer, text="Setup wizard", style="Accent.TButton",
                    command=self.open_wizard).pack(side="right", padx=8)
+        ttk.Button(footer, text="Detect devices",
+                   command=lambda: self.detect_devices(announce=True)).pack(side="right")
 
         self.tabs = ttk.Notebook(self)
         self.tabs.pack(fill="both", expand=True, padx=20, pady=(0, 12))
@@ -380,6 +386,79 @@ class SkyboxGUI(tk.Tk):
                 self._events.put(DONE)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    # ------------------------------------------------------- USB auto-detection
+    def _poll_devices(self) -> None:
+        self.detect_devices()
+        self.after(3000, self._poll_devices)
+
+    def detect_devices(self, announce: bool = False) -> None:
+        """Scan USB in the background; apply changes on the UI thread."""
+        if self._dev_busy:
+            return
+        self._dev_busy = True
+        from skybox_recon import devices as dv
+
+        def worker():
+            try:
+                quick = dv.detect(probe_tuner=False)
+                ids = {d.ident for d in quick}
+                new_rtl = any(d.vid == "0bda" and d.ident not in self._dev_seen for d in quick)
+                found = dv.detect(probe_tuner=True) if new_rtl else quick
+                self.call_ui(self._apply_devices, found, ids, announce)
+            except Exception as exc:  # noqa: BLE001
+                self.call_ui(self.log, f"Device scan failed: {exc}")
+            finally:
+                self._dev_busy = False
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_devices(self, found, ids, announce) -> None:
+        from skybox_recon import devices as dv
+        changed = ids != self._dev_seen
+        added = [d for d in found if d.ident not in self._dev_seen]
+        removed = self._dev_seen - ids
+        self._dev_seen = ids
+        self.devices = found
+        sdr = dv.best_sdr(found)
+        sers = [d for d in found if d.kind == "serial"]
+        parts = []
+        if sdr:
+            parts.append(("⚠ " if sdr.problem else "✓ ") + sdr.name)
+        parts += [f"{d.name.split(' USB')[0]} ({d.port})" for d in sers]
+        self.dev_var.set("Devices: " + (" • ".join(parts) if parts else "none connected"))
+        if not (changed or announce):
+            return
+        for d in added:
+            self.log(f"Connected: {d.label()}")
+        if removed:
+            self.log(f"Disconnected: {len(removed)} device(s)")
+        if announce and not found:
+            self.log("No SDR or USB-serial adapter found. Check the cable and port, then press Detect devices.")
+        # auto-select the serial port
+        port = dv.best_serial(found)
+        try:
+            ports = sorted(d.port for d in sers)
+            self.port_box.configure(values=ports)
+            if port and self.port.get() not in ports:
+                self.port.set(port)
+                self.log(f"Serial port auto-selected: {port}")
+        except AttributeError:
+            pass
+        # auto-select the tuner on the Spectrum tab
+        if sdr and sdr.sdr_key and not sdr.problem:
+            sp = getattr(self, "spectrum", None)
+            if sp is not None and sp.tuner.get() != sdr.sdr_key:
+                sp.tuner.set(sdr.sdr_key)
+                try:
+                    sp.apply_band(keep_values=True)
+                except Exception:  # noqa: BLE001
+                    pass
+                self.log(f"Tuner auto-selected: {sdr.sdr_key}")
+        for d in found:
+            if d.problem and d.ident not in self._dev_warned:
+                self._dev_warned.add(d.ident)
+                messagebox.showwarning("Device found, but not ready", f"{d.name}: {d.problem}")
 
     def refresh_ports(self, quiet: bool = False) -> None:
         try:
