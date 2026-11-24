@@ -15,6 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from . import dvb, spectrum
 from .advisor import CognitiveAdvisor, acquisition_plan, identify_satellite, load_reference
+from .gui_help import TUNERS
 
 BG, PANEL, INK, SUB, ACCENT, AMBER, GREEN = "#0b1220", "#142238", "#e6edf7", "#9fb2cc", "#1677d2", "#f5c451", "#3ccf91"
 PLOT_BG, GRID = "#07101d", "#1b2c44"
@@ -78,6 +79,8 @@ class SpectrumPanel:
         field(row, "Gain (dB)", self.gain, 5)
         self.bin = tk.StringVar(value="1000")
         field(row, "Bin (kHz)", self.bin, 6, ["250", "500", "1000", "2000"])
+        self.tuner = tk.StringVar(value=next(iter(TUNERS)))
+        field(row, "Tuner", self.tuner, 24, list(TUNERS))
         btns = ttk.Frame(row)
         btns.pack(side="left", pady=(14, 0))
         self.start_btn = ttk.Button(btns, text="Start", style="Accent.TButton", command=self.start)
@@ -112,10 +115,10 @@ class SpectrumPanel:
         self.beep = tk.BooleanVar(value=True)
         ttk.Checkbutton(side, text="Beep", variable=self.beep).pack(anchor="w")
         ttk.Button(side, text="Reset peak", command=lambda: self.finder.reset_peak()).pack(anchor="w", pady=6)
-        tk.Label(side, text="Watch window (IF MHz, blank = full band)", bg=PANEL, fg=SUB, wraplength=210,
-                 justify="left").pack(anchor="w", pady=(8, 2))
         wrow = tk.Frame(side, bg=PANEL)
-        wrow.pack(anchor="w")
+        wrow.pack(anchor="w", pady=(8, 0))
+        tk.Label(wrow, text="Watch window (IF MHz, blank = full band)", bg=PANEL, fg=SUB, wraplength=210,
+                 justify="left").pack(anchor="w", pady=(0, 2))
         self.win_lo, self.win_hi = tk.StringVar(), tk.StringVar()
         ttk.Entry(wrow, textvariable=self.win_lo, width=7).pack(side="left")
         ttk.Entry(wrow, textvariable=self.win_hi, width=7).pack(side="left", padx=4)
@@ -162,7 +165,8 @@ class SpectrumPanel:
                                  "and connect the SDR to the dish cable through an LNB power inserter.")
             return
         try:
-            cmd = spectrum.sweep_command(src, bin_khz=int(self.bin.get()), gain=int(self.gain.get()))
+            _t, lo, hi = TUNERS.get(self.tuner.get(), ("", 950.0, 2150.0))
+            cmd = spectrum.sweep_command(src, lo, hi, bin_khz=int(self.bin.get()), gain=int(self.gain.get()))
         except ValueError as e:
             messagebox.showerror("Spectrum", str(e))
             return
@@ -827,7 +831,8 @@ class AdvisorPanel:
                 elif self.spec.last:
                     sweep = self.spec.last
                 else:
-                    cmd = spectrum.sweep_command(self.spec.source.get(), once=True)
+                    _t, lo, hi = TUNERS.get(self.spec.tuner.get(), ("", 950.0, 2150.0))
+                    cmd = spectrum.sweep_command(self.spec.source.get(), lo, hi, once=True)
                     out = subprocess.run(cmd, capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW)
                     sweeps = spectrum.read_sweeps_csv(out.stdout)
                     if not sweeps:

@@ -75,7 +75,7 @@ from tkinter import ttk, filedialog, messagebox  # noqa: E402
 
 
 class SkyboxGUI(tk.Tk):
-    def __init__(self) -> None:
+    def __init__(self, smoke: bool = False) -> None:
         super().__init__()
         self._events: queue.Queue = queue.Queue()
         self._calls: queue.Queue = queue.Queue()
@@ -96,6 +96,13 @@ class SkyboxGUI(tk.Tk):
         self.log(f"Application folder: {APP_DIR}")
         self.log("Open Diagnostics / Log → Run self-test to check the command engine.")
         self.after(100, self._drain_events)
+        from skybox_recon import gui_help
+        self.after(300, lambda: self.log(f"Hover help: {gui_help.attach_tips(self)} tips ready."))
+        settings = gui_help.load_settings()
+        if settings:
+            gui_help.apply_settings(self, settings)
+        elif not smoke:
+            self.after(800, self.open_wizard)
 
     # ------------------------------------------------------------------ style
     def _style(self) -> None:
@@ -109,6 +116,9 @@ class SkyboxGUI(tk.Tk):
         style.configure("Panel.TFrame", background="#142238")
         style.configure("TLabel", background="#101a2b", foreground="#e6edf7")
         style.configure("TCheckbutton", background="#101a2b", foreground="#e6edf7")
+        style.configure("TRadiobutton", background="#101a2b", foreground="#e6edf7")
+        style.map("TRadiobutton", background=[("active", "#142238")])
+        style.map("TCheckbutton", background=[("active", "#142238")])
         style.configure("Treeview", background="#0d1828", fieldbackground="#0d1828", foreground="#e6edf7",
                         rowheight=24)
         style.configure("Treeview.Heading", background="#1a2b43", foreground="#dce8f8")
@@ -159,6 +169,8 @@ class SkyboxGUI(tk.Tk):
         ).pack(side="left")
         ttk.Button(footer, text="Open application folder",
                    command=lambda: self.open_path(APP_DIR)).pack(side="right")
+        ttk.Button(footer, text="Setup wizard", style="Accent.TButton",
+                   command=self.open_wizard).pack(side="right", padx=8)
 
         self.tabs = ttk.Notebook(self)
         self.tabs.pack(fill="both", expand=True, padx=20, pady=(0, 12))
@@ -303,6 +315,11 @@ class SkyboxGUI(tk.Tk):
         self.output.delete("1.0", "end")
         self.output.configure(state="disabled")
 
+    def open_wizard(self) -> None:
+        from skybox_recon.gui_help import SetupWizard, attach_tips
+        wiz = SetupWizard(self)
+        self.after(200, lambda: attach_tips(wiz))
+
     def call_ui(self, fn, *args) -> None:
         """Run fn(*args) on the Tk thread (safe to call from worker threads)."""
         self._calls.put((fn, args))
@@ -433,7 +450,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["--cli"]:
         return run_engine_inline(argv[1:])
     try:
-        app = SkyboxGUI()
+        app = SkyboxGUI(smoke=argv[:1] == ["--smoke-test"])
         if argv[:1] == ["--smoke-test"]:
             app.after(1500, app.destroy)
         app.mainloop()

@@ -56,6 +56,12 @@ Not included: audio/video decoding (use VLC/mpv on the stream), conditional-acce
 descrambling, and firmware flashing from the GUI. Real reception of each DVB-S2X
 mode depends on the demodulator silicon and driver.
 
+## Getting started
+
+On first launch a setup wizard asks for the band (Ku low/high or C-band), your SDR, and how the LNB is
+powered, checks the wiring and safety points, and configures the Spectrum, Blind Scan and Tuning tabs. Rerun it
+from the **Setup wizard** button. Hover over any control for a help tip.
+
 ## Command line
 
 ```
