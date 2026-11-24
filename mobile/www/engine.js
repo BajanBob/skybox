@@ -3,7 +3,8 @@
 (function (root) {
   "use strict";
 
-  const VERSION = "2.0.0";
+  const VERSION = "6.0.0";
+  const CODENAME = "Beryl";
 
   // ---------------------------------------------------------------- checksums
   const CRC_TABLE = (() => {
@@ -171,23 +172,49 @@
   }
 
   // ---------------------------------------------------------------- DVB tuning
+  const MODULATIONS = {
+    DVBS: ["QPSK"],
+    DVBS2: ["QPSK", "8PSK", "16APSK", "32APSK"],
+    DVBS2X: ["QPSK", "8PSK", "8APSK-L", "16APSK", "16APSK-L", "32APSK", "32APSK-L", "64APSK", "64APSK-L",
+      "128APSK", "256APSK", "256APSK-L", "pi/2-BPSK"],
+  };
+  const V5_MOD = { auto: "QAM/AUTO", QPSK: "QPSK", "8PSK": "PSK/8", "16APSK": "APSK/16", "32APSK": "APSK/32" };
+  const V5_POL = { H: "HORIZONTAL", V: "VERTICAL", L: "LEFT", R: "RIGHT" };
+  const V5_ROLLOFF = { auto: "AUTO", "0.35": "35", "0.25": "25", "0.20": "20", "0.15": "15", "0.10": "10", "0.05": "5" };
+  const LNBS = { UNIVERSAL: [9750, 10600, 11700], ENHANCED: [9750], STANDARD: [10000], L10700: [10700],
+    L10750: [10750], L11300: [11300], DBS: [11250], "C-BAND": [5150] };
+  const PLS_MODES = ["ROOT", "GOLD", "COMBO"];
+
+  function lnbFor(rfMHz, lnb) {
+    const p = LNBS[lnb] || LNBS.UNIVERSAL;
+    return p.length === 3 && rfMHz >= p[2] ? { lof: p[1], tone: true } : { lof: p[0], tone: false };
+  }
+  const rfToIf = (rf, lof) => (lof < 6000 ? lof - rf : rf - lof);
+  const voltageFor = (pol) => (pol === "H" || pol === "L" ? 18 : 13);
+  function streamId(isi, pls, mode) {
+    if ((isi === "" || isi == null) && (pls === "" || pls == null)) return null;
+    return (((PLS_MODES.indexOf(mode) & 3) << 26) >>> 0) + (((+pls || 0) & 0x3ffff) * 256) + ((+isi || 0) & 0xff);
+  }
+
+  // o: freq (RF kHz), sr, delsys, mod, fec, pol, rolloff, pilot, inversion, mis, pls, plsMode, diseqc, service
   function tuneConf(o) {
-    const lines = [`[${o.service}]`,
-      `\tDELIVERY_SYSTEM = ${o.delsys}`, `\tFREQUENCY = ${o.freq}`, `\tSYMBOL_RATE = ${o.sr}`,
-      `\tINNER_FEC = ${o.fec}`, `\tMODULATION = ${o.mod}`, `\tPOLARIZATION = ${o.pol}`];
-    if (o.delsys.startsWith("DVBS2")) lines.push(`\tROLLOFF = ${o.rolloff}`, `\tPILOT = ${o.pilot}`);
-    if (o.mis !== "" && o.mis != null) lines.push(`\tSTREAM_ID = ${o.mis}`);
-    if (o.pls !== "" && o.pls != null) lines.push(`\tPLS_CODE = ${o.pls}`, `\tPLS_MODE = ${o.plsMode}`);
-    return lines.join("\n") + "\n";
+    if (o.mod !== "auto" && !(MODULATIONS[o.delsys] || []).includes(o.mod)) throw new Error(`${o.mod} is not a ${o.delsys} modulation`);
+    const head = V5_MOD[o.mod] ? "" : `# requested modulation ${o.mod}: written as QAM/AUTO (demodulator detects it)\n`;
+    const lines = [`[${o.service}]`, `\tDELIVERY_SYSTEM = ${o.delsys}`, `\tFREQUENCY = ${o.freq}`,
+      `\tSYMBOL_RATE = ${o.sr}`, `\tINNER_FEC = ${o.fec === "auto" ? "AUTO" : o.fec === "none" ? "NONE" : o.fec}`,
+      `\tMODULATION = ${V5_MOD[o.mod] || "QAM/AUTO"}`, `\tPOLARIZATION = ${V5_POL[o.pol]}`,
+      `\tINVERSION = ${(o.inversion || "auto").toUpperCase()}`];
+    if (o.delsys !== "DVBS") lines.push(`\tROLLOFF = ${V5_ROLLOFF[o.rolloff] || "AUTO"}`, `\tPILOT = ${(o.pilot || "auto").toUpperCase()}`);
+    const sid = streamId(o.mis, o.pls, o.plsMode);
+    if (sid !== null) lines.push(`\tSTREAM_ID = ${sid}`);
+    if (o.diseqc !== "" && o.diseqc != null && o.diseqc !== "none") lines.push(`\tSAT_NUMBER = ${o.diseqc}`);
+    return head + lines.join("\n") + "\n";
   }
 
   function tuneCommand(o) {
-    const args = ["skybox-cli", "tune", "--freq", o.freq, "--sr", o.sr, "--delsys", o.delsys,
-      "--mod", o.mod, "--fec", o.fec, "--pol", o.pol];
-    if (o.delsys.startsWith("DVBS2")) args.push("--rolloff", o.rolloff, "--pilot", o.pilot);
-    if (o.mis !== "" && o.mis != null) args.push("--mis", o.mis);
-    if (o.pls !== "" && o.pls != null) args.push("--pls", o.pls, "--pls-mode", o.plsMode);
-    args.push("--service", o.service);
+    const args = ["dvbv5-zap", "-a", "0", "-f", "0", "-l", o.lnb || "UNIVERSAL", "-c", `${o.service}.conf`, "-t", "600"];
+    if (o.diseqc !== "" && o.diseqc != null && o.diseqc !== "none") args.push("-S", o.diseqc);
+    args.push("-o", "capture.ts", o.service);
     return args.join(" ");
   }
 
@@ -220,7 +247,7 @@
     return results;
   }
 
-  const api = { VERSION, crc32, crc16xmodem, sum16, hexdump, parseHex, encodeFrame, decodeFrame,
+  const api = { VERSION, CODENAME, MODULATIONS, LNBS, lnbFor, rfToIf, voltageFor, streamId, crc32, crc16xmodem, sum16, hexdump, parseHex, encodeFrame, decodeFrame,
     entropy, entropyMap, findMagics, partitionCandidates, analyzeFirmware, tuneConf, tuneCommand, selfTest, hex8 };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.SkyboxEngine = api;

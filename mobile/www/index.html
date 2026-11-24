@@ -47,10 +47,10 @@
   .result { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
   .result:last-child { border-bottom: 0; } .ok { color: var(--ok); font-weight: 700; } .bad { color: var(--bad); font-weight: 700; }
   .summary { font-size: 15px; font-weight: 700; margin: 8px 0 0; }
-  nav { display: grid; grid-template-columns: repeat(5, 1fr); background: var(--panel2); border-top: 1px solid var(--line);
+  nav { display: grid; grid-template-columns: repeat(6, 1fr); background: var(--panel2); border-top: 1px solid var(--line);
     padding-bottom: env(safe-area-inset-bottom); }
-  nav button { background: transparent; color: var(--sub); border-radius: 0; font-size: 11px; font-weight: 600;
-    padding: 8px 2px 10px; min-height: 58px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  nav button { background: transparent; color: var(--sub); border-radius: 0; font-size: 10px; font-weight: 600;
+    padding: 8px 1px 10px; min-height: 58px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
   nav button svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; }
   nav button.active { color: #fff; } nav button.active svg { stroke: var(--accent2); }
   .file { position: relative; overflow: hidden; display: inline-block; }
@@ -61,7 +61,7 @@
 <body>
 <header>
   <h1>◉ SKYBOX <span>RECON</span></h1>
-  <p>ALi M3510 / M3510A RECEIVER TOOLKIT · MOBILE</p>
+  <p>ALi M3510 / M3510A RECEIVER TOOLKIT · MOBILE · BERYL</p>
   <div class="status" id="status">● OFFLINE — local analysis only</div>
 </header>
 
@@ -82,10 +82,12 @@
       <button data-go="fw">Open Firmware Lab</button></div>
     <div class="card"><h3>Satellite tuning</h3><p>Build a DVB-S/S2/S2X channel file and engine command.</p>
       <button data-go="tune">Open tuning builder</button></div>
+    <div class="card"><h3>Services / PIDs</h3><p>Services, video and audio PIDs, codecs and satellite position from a recorded stream.</p>
+      <button data-go="svc">Open Services</button></div>
     <div class="card"><h3>IPL frame tool</h3><p>Encode and verify loader frames (A5 5A · len · cmd · payload · CRC32).</p>
       <button data-go="frame">Open frame tool</button></div>
-    <div class="warnbox">LIMITATIONS: The mobile edition does not drive serial/UART hardware, tune a frontend, blind-scan,
-      decode audio/video or flash firmware. Use the Windows or Linux edition with suitable hardware for serial probing.</div>
+    <div class="warnbox">MOBILE EDITION: works on files and offline tools only. Live spectrum, finder beep, blind scan, constellation,
+      dual tuner and network streaming need an SDR or DVB tuner and run in the Windows and Linux editions.</div>
   </section>
 
   <!-- Firmware -->
@@ -105,25 +107,42 @@
   <!-- Tuning -->
   <section id="tab-tune">
     <h2>Tuning builder</h2>
-    <p class="lead">Prepares a channel file and command; tuning needs DVB hardware and drivers.</p>
+    <p class="lead">dvbv5 channel file and command for DVB-S, S2 and S2X. Tuning needs a DVB frontend.</p>
     <div class="card">
       <div class="two">
-        <div><label>Frequency (kHz)</label><input id="t-freq" inputmode="numeric" value="11500000"></div>
+        <div><label>RF frequency (kHz)</label><input id="t-freq" inputmode="numeric" value="11778000"></div>
         <div><label>Symbol rate (sym/s)</label><input id="t-sr" inputmode="numeric" value="27500000"></div>
         <div><label>Standard</label><select id="t-delsys"><option>DVBS</option><option selected>DVBS2</option><option>DVBS2X</option></select></div>
-        <div><label>Modulation</label><select id="t-mod"><option>auto</option><option>QPSK</option><option>8PSK</option><option>16APSK</option><option>32APSK</option></select></div>
-        <div><label>FEC</label><select id="t-fec"><option>auto</option><option>1/2</option><option>2/3</option><option>3/4</option><option>5/6</option><option>7/8</option><option>1/3</option><option>2/5</option><option>3/5</option><option>4/5</option><option>8/9</option><option>9/10</option><option>none</option></select></div>
-        <div><label>Polarization</label><select id="t-pol"><option>H</option><option>V</option><option>L</option><option>R</option></select></div>
-        <div><label>Roll-off (S2)</label><select id="t-rolloff"><option>auto</option><option>0.35</option><option>0.25</option><option>0.20</option><option>0.15</option></select></div>
-        <div><label>Pilot (S2)</label><select id="t-pilot"><option>auto</option><option>on</option><option>off</option></select></div>
+        <div><label>Modulation</label><select id="t-mod"></select></div>
+        <div><label>FEC</label><select id="t-fec"><option>auto</option><option>1/4</option><option>1/3</option><option>2/5</option><option>1/2</option><option>3/5</option><option>2/3</option><option>3/4</option><option>4/5</option><option>5/6</option><option>7/8</option><option>8/9</option><option>9/10</option><option>none</option></select></div>
+        <div><label>Polarization</label><select id="t-pol"><option>H</option><option selected>V</option><option>L</option><option>R</option></select></div>
+        <div><label>Roll-off (S2/S2X)</label><select id="t-rolloff"><option>auto</option><option>0.35</option><option>0.25</option><option>0.20</option><option>0.15</option><option>0.10</option><option>0.05</option></select></div>
+        <div><label>Pilot (S2/S2X)</label><select id="t-pilot"><option>auto</option><option>on</option><option>off</option></select></div>
+        <div><label>Spectral inversion</label><select id="t-inversion"><option>auto</option><option>on</option><option>off</option></select></div>
+        <div><label>LNB</label><select id="t-lnb"></select></div>
         <div><label>Stream ID / MIS (optional)</label><input id="t-mis" inputmode="numeric" placeholder="none"></div>
         <div><label>PLS code (optional)</label><input id="t-pls" inputmode="numeric" placeholder="none"></div>
         <div><label>PLS mode</label><select id="t-plsmode"><option>ROOT</option><option>GOLD</option><option>COMBO</option></select></div>
+        <div><label>DiSEqC port</label><select id="t-diseqc"><option>none</option><option>0</option><option>1</option><option>2</option><option>3</option></select></div>
         <div><label>Service name</label><input id="t-service" value="ch1"></div>
       </div>
       <div class="row" style="margin-top:14px"><button id="tbuild">Build</button><button class="ghost" id="tcopy">Copy</button></div>
     </div>
     <pre id="tout">Output appears here.</pre>
+  </section>
+
+  <!-- Services -->
+  <section id="tab-svc">
+    <h2>Services / PIDs</h2>
+    <p class="lead">Services, PIDs, codecs and the satellite position (from the NIT) in a recorded .ts file.</p>
+    <div class="card">
+      <div class="row">
+        <span class="file btn">Open .ts…<input type="file" id="tsfile"></span>
+        <button class="ghost" id="tsdemo">Simulated stream</button>
+      </div>
+      <p class="muted" id="tsname" style="margin:10px 0 0">Record a few seconds with your receiver or a PC tuner, then open it here.</p>
+    </div>
+    <div id="tsout"></div>
   </section>
 
   <!-- Frame -->
@@ -160,11 +179,14 @@
   <button data-tab="home" class="active"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Home</button>
   <button data-tab="fw"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></svg>Firmware</button>
   <button data-tab="tune"><svg viewBox="0 0 24 24"><path d="M4 19a10 10 0 0 1 10-10M4 19a6 6 0 0 1 6-6"/><circle cx="4" cy="19" r="1.5"/><path d="M14 4l6 6-4 1-3-3z"/></svg>Tuning</button>
+  <button data-tab="svc"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Services</button>
   <button data-tab="frame"><svg viewBox="0 0 24 24"><path d="M8 6l-6 6 6 6M16 6l6 6-6 6"/></svg>Frames</button>
   <button data-tab="diag"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Diagnostics</button>
 </nav>
 
 <script src="engine.js"></script>
+<script src="tsparser.js"></script>
+<script src="demo-ts.js"></script>
 <script>
 (() => {
   "use strict";
@@ -231,9 +253,17 @@
   $("fwcopy").addEventListener("click", (e) => copy(report, e.target));
 
   // Tuning
+  function fillMods() {
+    const sel = $("t-mod"), keep = sel.value;
+    sel.innerHTML = ["auto", ...E.MODULATIONS[$("t-delsys").value]].map((m) => `<option>${m}</option>`).join("");
+    if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
+  }
+  $("t-lnb").innerHTML = Object.keys(E.LNBS).map((l) => `<option>${l}</option>`).join("");
+  $("t-delsys").addEventListener("change", fillMods);
+  fillMods();
   function tuneOpts() {
     const o = {};
-    for (const k of ["freq", "sr", "delsys", "mod", "fec", "pol", "rolloff", "pilot", "mis", "pls", "service"])
+    for (const k of ["freq", "sr", "delsys", "mod", "fec", "pol", "rolloff", "pilot", "inversion", "lnb", "mis", "pls", "diseqc", "service"])
       o[k] = $("t-" + k).value.trim();
     o.plsMode = $("t-plsmode").value;
     return o;
@@ -245,10 +275,49 @@
     for (const [k, label] of [["mis", "Stream ID"], ["pls", "PLS code"]])
       if (o[k] && !/^\d+$/.test(o[k])) return ($("tout").textContent = `${label} must be a whole number or empty.`);
     if (!/^[\w.-]+$/.test(o.service)) return ($("tout").textContent = "Service name: letters, digits, . _ - only.");
-    $("tout").textContent = `# ${o.service}.conf (dvbv5 channel file)\n${E.tuneConf(o)}\n# engine command\n${E.tuneCommand(o)}`;
+    try {
+      const rf = +o.freq / 1000, l = E.lnbFor(rf, o.lnb), ifm = E.rfToIf(rf, l.lof);
+      const warn = ifm < 950 || ifm > 2150 ? `\n# WARNING: IF ${ifm.toFixed(0)} MHz is outside 950-2150 MHz for this LNB` : "";
+      $("tout").textContent = `# LOF ${l.lof} MHz · IF ${ifm.toFixed(1)} MHz · 22 kHz ${l.tone ? "on" : "off"} · ${E.voltageFor(o.pol)} V${warn}\n` +
+        `# ${o.service}.conf\n${E.tuneConf(o)}\n# command (Linux, DVB-S2 adapter)\n${E.tuneCommand(o)}`;
+    } catch (e) { $("tout").textContent = "ERROR: " + e.message; }
   }
   $("tbuild").addEventListener("click", buildTune);
   $("tcopy").addEventListener("click", (e) => copy($("tout").textContent, e.target));
+
+  // Services
+  const esc = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function showTS(r, label) {
+    const here = r.here;
+    let html = `<div class="card"><h3>${esc(label)}</h3><p>${r.services.length} services · ${r.packets} packets · CC errors ${r.ccErrors}` +
+      ` · network ${esc(r.networkName || "-")}</p><p><b>Satellite (from NIT):</b> ${esc(r.orbitals.join(", ") || "not announced")}</p>`;
+    if (here) html += `<p>This transponder: ${(here.freqKHz / 1000).toFixed(0)} MHz ${here.pol} ${Math.round(here.sr / 1000)} ksym/s ${here.system} ${here.mod} FEC ${here.fec}</p>`;
+    html += "</div>";
+    for (const s of r.services) {
+      html += `<div class="card"><h3>${s.id} · ${esc(s.name || "(no name)")}${s.scrambled ? " · scrambled" : ""}</h3>` +
+        `<p>${esc(s.type || "")} · PMT 0x${s.pmtPid.toString(16).padStart(4, "0")} · PCR 0x${s.pcrPid.toString(16).padStart(4, "0")}</p>` +
+        s.components.map((c) => `<div class="result"><span>${c.type} · PID ${c.pid} (0x${c.pid.toString(16)})</span>` +
+          `<span>${esc(c.codec)}${c.lang ? " [" + esc(c.lang) + "]" : ""}</span></div>`).join("") + "</div>";
+    }
+    $("tsout").innerHTML = html;
+  }
+  $("tsfile").addEventListener("change", async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    $("tsname").textContent = `${f.name} · ${f.size.toLocaleString()} bytes`;
+    status("● WORKING — reading stream");
+    await new Promise((r) => setTimeout(r, 30));
+    try {
+      const data = new Uint8Array(await f.slice(0, 64 * 1024 * 1024).arrayBuffer());
+      showTS(SkyboxTS.parse(data), f.name);
+    } catch (e) { $("tsout").innerHTML = `<pre>ERROR: ${esc(e.message || e)}</pre>`; }
+    idle();
+  });
+  $("tsdemo").addEventListener("click", () => {
+    const bin = atob(self.SKYBOX_DEMO_TS), data = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
+    showTS(SkyboxTS.parse(data), "SIMULATED stream (not real reception)");
+  });
 
   // Frames
   $("fenc").addEventListener("click", () => {

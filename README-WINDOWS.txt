@@ -22,6 +22,17 @@ IF IT DOES NOT START
 - Any start-up error is shown in a dialog and written to
   SkyboxRecon-error.log next to the exe (or in your user folder).
 
+SDR HARDWARE (spectrum, finder beep, blind scan, constellation)
+- RTL-SDR: install the RTL-SDR Blog / osmocom rtl-sdr tools (rtl_power.exe,
+  rtl_sdr.exe) and put them on PATH or next to SkyboxRecon.exe. Use Zadig to
+  install the WinUSB driver for the dongle once.
+- HackRF One: install the HackRF tools (hackrf_sweep.exe, hackrf_transfer.exe),
+  for example from the PothosSDR bundle.
+- Feed the SDR from the dish cable through an LNB power inserter (13/18 V and
+  a DC block); never put LNB voltage into the SDR's antenna input.
+- Tuning, auto-acquire recording and the dual tuner use Linux DVB adapters;
+  on Windows those tabs build the commands and explain what is missing.
+
 SAFETY
 The GUI does not expose firmware flashing. Do not use IPL flash-write
 against a physical receiver until the write path is independently
