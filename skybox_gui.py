@@ -146,8 +146,10 @@ class SkyboxGUI(tk.Tk):
         ttk.Label(header, text="◉  SKYBOX RECON", style="Title.TLabel").pack(side="left")
         ttk.Label(header, text="ALi M3510 / M3510A RECEIVER TOOLKIT",
                   style="Sub.TLabel").pack(side="left", padx=18, pady=(8, 0))
-        self.status = tk.StringVar(value="●  OFFLINE — receiver not connected")
-        ttk.Label(header, textvariable=self.status, style="Status.TLabel").pack(side="right", pady=8)
+        self.status = tk.StringVar(value="●  OFFLINE — checking USB for an SDR or receiver…")
+        self.status_lbl = ttk.Label(header, textvariable=self.status, style="Status.TLabel")
+        self.status_lbl.pack(side="right", pady=8)
+        self._running = False
 
         summary = ttk.Frame(self, padding=(20, 0, 20, 14))
         summary.pack(fill="x")
@@ -162,8 +164,11 @@ class SkyboxGUI(tk.Tk):
             card.pack(side="left", fill="x", expand=True, padx=(0, 10))
             tk.Label(card, text=title, bg="#142238", fg="#83a9d6",
                      font=("Segoe UI", 8, "bold")).pack(anchor="w")
-            tk.Label(card, text=value, bg="#142238", fg="#f4f8ff",
-                     font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(4, 0))
+            val = tk.Label(card, text=value, bg="#142238", fg="#f4f8ff",
+                           font=("Segoe UI", 11, "bold"))
+            val.pack(anchor="w", pady=(4, 0))
+            self._cards = getattr(self, "_cards", {})
+            self._cards[title] = val
 
         # Footer is packed before the notebook so it is never squeezed off-screen.
         footer = ttk.Frame(self, padding=(20, 4, 20, 12))
@@ -346,7 +351,8 @@ class SkyboxGUI(tk.Tk):
             while True:
                 msg = self._events.get_nowait()
                 if msg is DONE:
-                    self.status.set("●  OFFLINE — receiver not connected")
+                    self._running = False
+                    self._refresh_status()
                     self.log("")
                 else:
                     self.log(msg)
@@ -364,6 +370,8 @@ class SkyboxGUI(tk.Tk):
     def run_cli(self, args: list[str], title: str) -> None:
         self.tabs.select(self.diag_tab)
         self.log(f"\n=== {title} ===")
+        self._running = True
+        self.status_lbl.configure(foreground="#7fb8ff")
         self.status.set(f"●  RUNNING — {title}")
         command = cli_command(args)
 
@@ -413,6 +421,33 @@ class SkyboxGUI(tk.Tk):
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _refresh_status(self) -> None:
+        """Header status: ONLINE as soon as an SDR or USB-serial receiver link is plugged in."""
+        if self._running:
+            return
+        from skybox_recon import devices as dv
+        found = getattr(self, "devices", []) or []
+        sdr = dv.best_sdr(found) or next((d for d in found if d.kind == "sdr"), None)
+        port = dv.best_serial(found)
+        if sdr and sdr.problem:
+            text, colour, rx, mode = (f"●  DEVICE FOUND — {sdr.name} needs its driver (see log)", "#f5c451",
+                                      sdr.name, "Driver needed")
+        elif sdr:
+            text, colour, rx, mode = (f"●  ONLINE — {sdr.name} connected", "#3ccf91", sdr.name, "Live SDR")
+        elif port:
+            text, colour, rx, mode = (f"●  ONLINE — serial link on {port}", "#3ccf91", f"Serial {port}",
+                                      "Live serial")
+        else:
+            text, colour, rx, mode = ("●  OFFLINE — plug in an SDR or USB-serial adapter", "#f5c451",
+                                      "Not connected", "Local / offline")
+        self.status.set(text)
+        self.status_lbl.configure(foreground=colour)
+        cards = getattr(self, "_cards", {})
+        if "RECEIVER" in cards:
+            cards["RECEIVER"].configure(text=rx)
+        if "CONTROL MODE" in cards:
+            cards["CONTROL MODE"].configure(text=mode)
+
     def _apply_devices(self, found, ids, announce) -> None:
         from skybox_recon import devices as dv
         changed = ids != self._dev_seen
@@ -427,6 +462,7 @@ class SkyboxGUI(tk.Tk):
             parts.append(("⚠ " if sdr.problem else "✓ ") + sdr.name)
         parts += [f"{d.name.split(' USB')[0]} ({d.port})" for d in sers]
         self.dev_var.set("Devices: " + (" • ".join(parts) if parts else "none connected"))
+        self._refresh_status()
         if not (changed or announce):
             return
         for d in added:
