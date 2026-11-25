@@ -37,6 +37,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "..\..\dist\SkyboxRecon.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\skybox-cli.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\Run-SkyboxRecon.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\README-WINDOWS.txt"; DestDir: "{app}"; Flags: ignoreversion isreadme
 

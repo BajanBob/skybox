@@ -47,7 +47,7 @@ import time
 from collections import Counter
 from dataclasses import dataclass
 
-VERSION = "6.0.0"
+VERSION = "7.2.0"
 CODENAME = "Beryl"
 
 # --------------------------------------------------------------------------- #

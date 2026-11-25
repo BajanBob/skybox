@@ -63,12 +63,30 @@ jobs:
           if (-not $p.WaitForExit(120000)) { $p.Kill(); throw "GUI did not close after smoke test" }
           if (Test-Path dist\SkyboxRecon-error.log) { Get-Content dist\SkyboxRecon-error.log }
           if ($p.ExitCode -ne 0) { throw "GUI start-up failed, exit code $($p.ExitCode)" }
+      - name: Bundle RTL-SDR tools (rtl_power, rtl_test; GPL-2.0, from rtlsdrblog/rtl-sdr-blog)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $dest = "dist\tools\rtl-sdr"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          gh release download --repo rtlsdrblog/rtl-sdr-blog --pattern "*.zip" --dir rtlsdr-dl
+          if ($LASTEXITCODE -ne 0) { throw "could not download rtl-sdr-blog release" }
+          Get-ChildItem rtlsdr-dl\*.zip | ForEach-Object { Expand-Archive $_.FullName -DestinationPath "rtlsdr-x\$($_.BaseName)" -Force }
+          $exe = Get-ChildItem rtlsdr-x -Recurse -Filter rtl_power.exe |
+                 Sort-Object { if ($_.FullName -match 'x64|64') { 0 } else { 1 } } | Select-Object -First 1
+          if (-not $exe) { throw "rtl_power.exe not found in the rtl-sdr-blog release" }
+          Write-Host "Using $($exe.DirectoryName)"
+          Copy-Item "$($exe.DirectoryName)\*.exe", "$($exe.DirectoryName)\*.dll" $dest
+          Set-Content "$dest\SOURCE.txt" "RTL-SDR tools from https://github.com/rtlsdrblog/rtl-sdr-blog (GPL-2.0). Source code is available there."
+          Get-ChildItem $dest
       - name: Portable ZIP
         shell: pwsh
         run: |
           $stage = "package\SkyboxRecon-Windows-x64"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
           Copy-Item dist\SkyboxRecon.exe, dist\skybox-cli.exe $stage
+          Copy-Item dist\tools -Destination "$stage\tools" -Recurse
           Copy-Item Launch-SkyboxRecon.bat, Run-SkyboxRecon.bat, Create-Desktop-Shortcut.ps1, README-WINDOWS.txt $stage
           Compress-Archive -Path "$stage\*" -DestinationPath "package\SkyboxRecon-$env:APP_VERSION-Windows-x64-Portable.zip" -Force
       - name: Installer (Inno Setup, desktop + Start-menu shortcuts)
@@ -86,6 +104,7 @@ jobs:
           $p = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/CURRENTUSER','/TASKS=desktopicon','/DIR=C:\SkyboxTest' -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "installer exit code $($p.ExitCode)" }
           if (-not (Test-Path C:\SkyboxTest\SkyboxRecon.exe)) { throw "SkyboxRecon.exe not installed" }
+          if (-not (Test-Path C:\SkyboxTest\tools\rtl-sdr\rtl_power.exe)) { throw "rtl_power.exe not installed" }
           & C:\SkyboxTest\skybox-cli.exe selftest
           if ($LASTEXITCODE -ne 0) { throw "installed CLI failed" }
       - uses: actions/upload-artifact@v4

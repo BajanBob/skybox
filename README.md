@@ -4,17 +4,17 @@ This package adds a native Tkinter desktop shell around the supplied `skybox.py`
 command-line engine. Launching `SkyboxRecon.exe` opens a persistent graphical
 control centre rather than printing CLI usage and exiting.
 
-## Downloads (v6.0.0 Beryl)
+## Downloads (v7.2.0 Beryl)
 GitHub Actions (`.github/workflows/build.yml`) builds and tests every platform
 on each push and pull request. Pushing a tag such as `v2.0.0` also publishes a
 GitHub Release with all files attached.
 
 | Platform | File | Notes |
 |---|---|---|
-| Windows x64 installer | `SkyboxRecon-6.0.0-Windows-x64-Setup.exe` | Desktop + Start-menu shortcuts, uninstaller; no admin needed |
-| Windows x64 portable | `SkyboxRecon-6.0.0-Windows-x64-Portable.zip` | `SkyboxRecon.exe` (GUI) + `skybox-cli.exe` |
-| Linux x86_64 | `SkyboxRecon-6.0.0-Linux-x86_64.zip` | GUI + CLI, `install.sh` adds menu/desktop launcher |
-| Android | `SkyboxRecon-6.0.0-Android.apk` | Mobile edition: services/PIDs + satellite from .ts files, S2X tuning builder, firmware, frames, self-test |
+| Windows x64 installer | `SkyboxRecon-7.2.0-Windows-x64-Setup.exe` | Desktop + Start-menu shortcuts, uninstaller; no admin needed |
+| Windows x64 portable | `SkyboxRecon-7.2.0-Windows-x64-Portable.zip` | `SkyboxRecon.exe` (GUI) + `skybox-cli.exe` |
+| Linux x86_64 | `SkyboxRecon-7.2.0-Linux-x86_64.zip` | GUI + CLI, `install.sh` adds menu/desktop launcher |
+| Android | `SkyboxRecon-7.2.0-Android.apk` | Mobile edition: services/PIDs + satellite from .ts files, S2X tuning builder, firmware, frames, self-test |
 
 The desktop `SkyboxRecon` executable bundles the `skybox.py` engine; run
 `SkyboxRecon --cli <command>` to use it directly. The Android edition
