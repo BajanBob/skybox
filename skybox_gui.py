@@ -32,7 +32,7 @@ BUNDLE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))
 try:
     from skybox import CODENAME, VERSION as APP_VERSION
 except Exception:  # noqa: BLE001
-    APP_VERSION, CODENAME = "6.0.0", "Beryl"
+    APP_VERSION, CODENAME = "7.2.0", "Beryl"
 
 DONE = object()  # worker-finished marker passed through the event queue
 
